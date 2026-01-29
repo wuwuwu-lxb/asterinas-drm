@@ -7,8 +7,8 @@ use core::{fmt::Display, sync::atomic::Ordering};
 use aster_rights::Rights;
 
 use super::{
-    AccessMode, AtomicStatusFlags, CreationFlags, FileLike, InodeType, Mappable, StatusFlags,
-    file_table::FdFlags, flock::FlockItem,
+    AccessMode, AtomicStatusFlags, CreationFlags, FileLike, InodeType, Mappable, MappableObject,
+    StatusFlags, file_table::FdFlags, flock::FlockItem,
 };
 use crate::{
     events::IoEvents,
@@ -339,7 +339,7 @@ impl FileLike for InodeHandle {
         return_errno_with_message!(Errno::ENOTTY, "ioctl is not supported");
     }
 
-    fn mappable(&self) -> Result<Mappable> {
+    fn mappable(&self) -> Result<MappableObject<'_>> {
         if self.rights.is_empty() {
             return_errno_with_message!(Errno::EBADF, "the file is opened as a path");
         }
@@ -348,11 +348,11 @@ impl FileLike for InodeHandle {
         if let Some(ref vmo) = inode.page_cache() {
             // If the inode has a page cache, it is a file-backed mapping and
             // we return the VMO as the mappable object.
-            Ok(Mappable::Vmo(vmo.clone()))
+            Ok(MappableObject::Vmo(vmo.clone()))
         } else if let Some(ref file_io) = self.file_io {
             // Otherwise, it is a special file (e.g. device file) and we should
             // return the file-specific mappable object.
-            file_io.mappable()
+            file_io.mappable().map(MappableObject::Device)
         } else {
             return_errno_with_message!(Errno::ENODEV, "the file is not mappable");
         }
@@ -548,7 +548,7 @@ pub trait FileIo: Pollable + InodeIo + Any + Send + Sync + 'static {
     }
 
     // See `FileLike::mappable`.
-    fn mappable(&self) -> Result<Mappable> {
+    fn mappable(&self) -> Result<&dyn Mappable> {
         return_errno_with_message!(Errno::EINVAL, "the file is not mappable");
     }
 

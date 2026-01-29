@@ -5,7 +5,7 @@ use core::num::NonZeroUsize;
 use super::{MappedMemory, MappedVmo, RssDelta, VmMapping, Vmar};
 use crate::{
     fs::{
-        file::{FileLike, Mappable},
+        file::{FileLike, MappableObject},
         ramfs::memfd::MemfdInode,
         vfs::path::Path,
     },
@@ -48,15 +48,15 @@ impl Vmar {
     /// ```
     ///
     /// For more details on the available options, see [`VmarMapOptions`].
-    pub fn new_map(&self, size: usize, perms: VmPerms) -> Result<VmarMapOptions<'_>> {
+    pub fn new_map<'b>(&self, size: usize, perms: VmPerms) -> Result<VmarMapOptions<'_, 'b>> {
         Ok(VmarMapOptions::new(self, size, perms))
     }
 }
 
 /// Options for creating a new mapping.
-pub struct VmarMapOptions<'a> {
+pub struct VmarMapOptions<'a, 'b> {
     parent: &'a Vmar,
-    mappable: Option<Mappable>,
+    mappable: Option<MappableObject<'b>>,
     path: Option<Path>,
     perms: VmPerms,
     may_perms: VmPerms,
@@ -94,7 +94,7 @@ pub enum VmarMapOffset {
     Any,
 }
 
-impl<'a> VmarMapOptions<'a> {
+impl<'a, 'b> VmarMapOptions<'a, 'b> {
     /// Creates a default set of options with the size and the memory access
     /// permissions.
     fn new(parent: &'a Vmar, size: usize, perms: VmPerms) -> Self {
@@ -140,7 +140,7 @@ impl<'a> VmarMapOptions<'a> {
     ///     oversized mappings can reserve space for future expansions.
     ///
     /// The [`Vmo`] of a mapping will be implicitly set if [`Self::mappable`] is
-    /// set with a [`Mappable::Vmo`].
+    /// set with a [`MappableObject::Vmo`].
     ///
     /// # Panics
     ///
@@ -149,7 +149,7 @@ impl<'a> VmarMapOptions<'a> {
         if self.mappable.is_some() {
             panic!("Cannot set `vmo` when `mappable` is already set");
         }
-        self.mappable = Some(Mappable::Vmo(vmo));
+        self.mappable = Some(MappableObject::Vmo(vmo));
 
         self
     }
@@ -226,11 +226,11 @@ impl<'a> VmarMapOptions<'a> {
         self
     }
 
-    /// Binds the file's [`Mappable`] object to the mapping and sets the
-    /// [`Path`] of the mapping.
+    /// Binds the file's [`MappableObject`] to the mapping and sets the [`Path`]
+    /// of the mapping.
     ///
-    /// This method accepts file-specific details, like a page cache (inode)
-    /// or I/O memory, but not both simultaneously.
+    /// This method accepts file-specific details, like a page cache (inode) or
+    /// I/O memory, but not both simultaneously.
     ///
     /// # Panics
     ///
@@ -241,7 +241,7 @@ impl<'a> VmarMapOptions<'a> {
     ///
     /// This function returns an error if the file does not have a corresponding
     /// mappable object of [`Mappable`].
-    pub fn mappable(mut self, file: &dyn FileLike) -> Result<Self> {
+    pub fn mappable(mut self, file: &'b dyn FileLike) -> Result<Self> {
         if self.mappable.is_some() {
             panic!("Cannot set `mappable` when `mappable` is already set");
         }
@@ -323,8 +323,8 @@ impl<'a> VmarMapOptions<'a> {
         };
 
         // Parse the `Mappable` and prepare the `MappedMemory`.
-        let (mapped_mem, io_mem) = match mappable {
-            Some(Mappable::Vmo(vmo)) => {
+        let (mapped_mem, device_mappable, vmo_for_rmap) = match mappable {
+            Some(MappableObject::Vmo(vmo)) => {
                 if let Some(ref path) = path {
                     debug_assert!(Arc::ptr_eq(&vmo, &path.inode().page_cache().unwrap()));
                 }
@@ -340,16 +340,22 @@ impl<'a> VmarMapOptions<'a> {
                     false
                 };
 
+                let vmo_for_rmap = vmo.clone();
                 let mapped_mem =
                     MappedMemory::Vmo(MappedVmo::new(vmo, vmo_offset, is_writable_tracked)?);
-                (mapped_mem, None)
+                (mapped_mem, None, Some(vmo_for_rmap))
             }
-            Some(Mappable::IoMem(io_mem)) => (MappedMemory::Device, Some(io_mem)),
-            None => (MappedMemory::Anonymous, None),
+            // Note that `MappedMemory::Anonymous` is temporary. This will be corrected in
+            // `VmMapping::populate_device` below.
+            Some(MappableObject::Device(mappable)) => {
+                let vmo_for_rmap = mappable.vmo_for_rmap().cloned();
+                (MappedMemory::Anonymous, Some(mappable), vmo_for_rmap)
+            }
+            None => (MappedMemory::Anonymous, None, None),
         };
 
         // Build the mapping.
-        let vm_mapping = VmMapping::new(
+        let mut vm_mapping = VmMapping::new(
             NonZeroUsize::new(map_size).unwrap(),
             map_to_addr,
             mapped_mem,
@@ -359,7 +365,6 @@ impl<'a> VmarMapOptions<'a> {
             perms | may_perms,
         );
 
-        let vmo_for_rmap = vm_mapping.vmo().map(MappedVmo::vmo).cloned();
         let mut rmap = vmo_for_rmap.as_ref().map(|vmo| vmo.rmap().lock());
 
         // Populate device memory if needed before adding to VMAR.
@@ -368,8 +373,9 @@ impl<'a> VmarMapOptions<'a> {
         // otherwise another traversal is needed for locating the `VmMapping`.
         // Exchange the operation is ok since we hold the write lock on the
         // VMAR.
-        if let Some(io_mem) = io_mem {
-            vm_mapping.populate_device(parent.vm_space(), io_mem, vmo_offset);
+        if let Some(mappable) = device_mappable {
+            let mut rss_delta = RssDelta::new(parent);
+            vm_mapping.populate_device(parent.vm_space(), mappable, vmo_offset, &mut rss_delta);
         }
 
         // Add the mapping to the VMAR.

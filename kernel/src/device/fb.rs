@@ -11,12 +11,13 @@ use crate::{
     context::current_userspace,
     events::IoEvents,
     fs::{
-        file::{FileIo, Mappable, StatusFlags},
+        file::{FileIo, Mappable, MappedObject, StatusFlags},
         vfs::inode::InodeIo,
     },
     prelude::*,
     process::signal::{PollHandle, Pollable},
     util::ioctl::{RawIoctl, dispatch_ioctl},
+    vm::vmar::MappingHandle,
 };
 
 #[derive(Debug)]
@@ -497,9 +498,8 @@ impl FileIo for FbHandle {
         true
     }
 
-    fn mappable(&self) -> Result<Mappable> {
-        let iomem = self.framebuffer.io_mem();
-        Ok(Mappable::IoMem(iomem.clone()))
+    fn mappable(&self) -> Result<&dyn Mappable> {
+        Ok(self as &dyn Mappable)
     }
 
     fn ioctl(&self, raw_ioctl: RawIoctl) -> Result<i32> {
@@ -545,6 +545,38 @@ impl FileIo for FbHandle {
                 return_errno_with_message!(Errno::ENOTTY, "the ioctl command is unknown");
             }
         })
+    }
+}
+
+impl Mappable for FbHandle {
+    fn map(&self, offset: usize, mut handle: MappingHandle) -> Box<dyn MappedObject> {
+        let io_mem = self.framebuffer.io_mem();
+        let mapped_handle = Box::new(FbMapHandle);
+
+        let io_mem_sliced = if offset >= io_mem.size() {
+            return mapped_handle;
+        } else if offset != 0 {
+            io_mem.slice(offset..io_mem.size())
+        } else {
+            io_mem.clone()
+        };
+
+        handle.map_iomem(0, io_mem_sliced);
+
+        mapped_handle
+    }
+}
+
+#[derive(Debug)]
+struct FbMapHandle;
+
+impl MappedObject for FbMapHandle {
+    fn dup(&self) -> Box<dyn MappedObject> {
+        Box::new(Self)
+    }
+
+    fn split_at(self: Box<Self>, _offset: usize) -> (Box<dyn MappedObject>, Box<dyn MappedObject>) {
+        (Box::new(Self), Box::new(Self))
     }
 }
 

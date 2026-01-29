@@ -6,8 +6,6 @@
 
 use core::fmt::Display;
 
-use ostd::io::IoMem;
-
 use super::{AccessMode, InodeHandle, StatusFlags, file_table::FdFlags, inode_handle::SeekFrom};
 use crate::{
     fs::vfs::{inode::FallocMode, path::Path},
@@ -15,7 +13,7 @@ use crate::{
     prelude::*,
     process::signal::Pollable,
     util::ioctl::RawIoctl,
-    vm::vmo::Vmo,
+    vm::{perms::VmPerms, vmar::MappingHandle, vmo::Vmo},
 };
 
 /// The basic operations defined on a file
@@ -57,10 +55,7 @@ pub trait FileLike: Pollable + Send + Sync + Any {
     }
 
     /// Obtains the mappable object to map this file into the user address space.
-    ///
-    /// If this file has a corresponding mappable object of [`Mappable`],
-    /// then it can be either an inode or an MMIO region.
-    fn mappable(&self) -> Result<Mappable> {
+    fn mappable(&self) -> Result<MappableObject<'_>> {
         // `ENODEV` means that "The underlying filesystem of the specified file does not support
         // memory mapping".
         // Reference: <https://man7.org/linux/man-pages/man2/mmap.2.html>.
@@ -150,10 +145,64 @@ impl dyn FileLike {
 }
 
 /// An object that may be memory mapped into the user address space.
-#[derive(Clone, Debug)]
-pub enum Mappable {
+pub enum MappableObject<'a> {
     /// A VMO (i.e., page cache).
     Vmo(Arc<Vmo>),
-    /// An MMIO region.
-    IoMem(IoMem),
+    /// A device mapping.
+    Device(&'a dyn Mappable),
+}
+
+/// A trait that describes memory mapping behavior for special files (in `mmap`).
+pub trait Mappable {
+    /// Fills the memory region to map with `handle`.
+    ///
+    /// `offset` specifies the file offset.
+    fn map(&self, offset: usize, handle: MappingHandle) -> Box<dyn MappedObject>;
+
+    /// Returns a reference to the VMO for reverse mappings, if any.
+    ///
+    /// Note that this must return the same VMO as [`MappedObject::vmo_for_rmap`] returns.
+    fn vmo_for_rmap(&self) -> Option<&Arc<Vmo>> {
+        None
+    }
+}
+
+/// A trait that describes memory mapping behavior for special files (after `mmap`).
+pub trait MappedObject: Send + Sync + Debug {
+    /// Duplicates the memory mapping.
+    fn dup(&self) -> Box<dyn MappedObject>;
+
+    /// Splits the memory mapping.
+    ///
+    /// `offset` specifies the memory address offset within the mapping, which must be greater than
+    /// zero and smaller than the mapping size.
+    fn split_at(self: Box<Self>, offset: usize) -> (Box<dyn MappedObject>, Box<dyn MappedObject>);
+
+    /// Handles the page fault.
+    ///
+    /// `offset` specifies the memory address offset within the mapping, which must be smaller than
+    /// the mapping size.
+    fn handle_page_fault(
+        &self,
+        _offset: usize,
+        _required_perms: VmPerms,
+        _handle: MappingHandle,
+    ) -> Result<()> {
+        return_errno_with_message!(
+            Errno::EFAULT,
+            "device memory page faults cannot be resolved"
+        );
+    }
+
+    /// Returns a reference to the VMO for reverse mappings, if any.
+    fn vmo_for_rmap(&self) -> Option<&Arc<Vmo>> {
+        None
+    }
+
+    /// Returns the file offset for reverse mapping.
+    ///
+    /// This method must return `Some` if [`Self::vmo_for_rmap`] returns `Some`.
+    fn offset_for_rmap(&self) -> Option<usize> {
+        None
+    }
 }

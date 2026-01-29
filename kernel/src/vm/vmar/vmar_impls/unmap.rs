@@ -18,9 +18,8 @@ impl Vmar {
     pub fn clear(&self) {
         let mut inner = self.inner.write();
         for vm_mapping in inner.vm_mappings.iter() {
-            if let Some(vmo) = vm_mapping.vmo() {
-                vmo.vmo()
-                    .rmap()
+            if let Some(vmo) = vm_mapping.vmo_for_rmap() {
+                vmo.rmap()
                     .lock()
                     .remove(&self.vm_space, vm_mapping.map_to_addr());
             }
