@@ -25,7 +25,10 @@ use super::{
 use crate::{
     prelude::*,
     process::{INIT_STACK_SIZE, Process, ProcessVm, ResourceType},
-    vm::vmar::is_userspace_vaddr_range,
+    vm::{
+        vmar::is_userspace_vaddr_range,
+        vmo::{Rmap, RmapEntry, Vmo},
+    },
 };
 
 /// The VMAR (used to be Virtual Memory Address Region, but now an orphan
@@ -128,6 +131,26 @@ impl Drop for RssDelta<'_> {
     }
 }
 
+struct RmapToRemove {
+    vmo: Option<Arc<Vmo>>,
+}
+
+impl RmapToRemove {
+    pub(self) fn new(vmo: Option<Arc<Vmo>>) -> Self {
+        Self { vmo }
+    }
+
+    pub(self) fn remove(
+        &self,
+        vm_space: &Arc<VmSpace>,
+        addr: Vaddr,
+    ) -> Option<MutexGuard<'_, Rmap>> {
+        let mut rmap = self.vmo.as_ref()?.rmap().lock();
+        rmap.remove(vm_space, addr);
+        Some(rmap)
+    }
+}
+
 struct VmarInner {
     /// The mapped pages and associated metadata.
     ///
@@ -188,8 +211,24 @@ impl VmarInner {
     /// any neighboring mappings.
     ///
     /// Make sure the insertion doesn't exceed address space limit.
-    fn insert_without_try_merge(&mut self, vm_mapping: VmMapping) {
+    fn insert_without_try_merge(
+        &mut self,
+        vm_space: &Arc<VmSpace>,
+        vm_mapping: VmMapping,
+        rmap: Option<&mut Rmap>,
+    ) {
         self.total_vm += vm_mapping.map_size();
+
+        if let Some(rmap) = rmap {
+            rmap.insert(
+                vm_space,
+                RmapEntry {
+                    vaddr: vm_mapping.map_to_addr(),
+                    offset: vm_mapping.vmo().unwrap().offset(),
+                    size: vm_mapping.map_size(),
+                },
+            );
+        }
         self.vm_mappings.insert(vm_mapping);
     }
 
@@ -200,7 +239,12 @@ impl VmarInner {
     /// that are adjacent and compatible, in order to reduce fragmentation.
     ///
     /// Make sure the insertion doesn't exceed address space limit.
-    fn insert_try_merge(&mut self, vm_mapping: VmMapping) {
+    fn insert_try_merge(
+        &mut self,
+        vm_space: &Arc<VmSpace>,
+        vm_mapping: VmMapping,
+        mut rmap: Option<&mut Rmap>,
+    ) {
         self.total_vm += vm_mapping.map_size();
         let mut vm_mapping = vm_mapping;
         let addr = vm_mapping.map_to_addr();
@@ -210,6 +254,9 @@ impl VmarInner {
             vm_mapping = new_mapping;
             if let Some(addr) = to_remove {
                 self.vm_mappings.remove(&addr);
+                if let Some(rmap) = rmap.as_deref_mut() {
+                    rmap.remove(vm_space, addr);
+                }
             }
         }
 
@@ -218,17 +265,33 @@ impl VmarInner {
             vm_mapping = new_mapping;
             if let Some(addr) = to_remove {
                 self.vm_mappings.remove(&addr);
+                if let Some(rmap) = rmap.as_deref_mut() {
+                    rmap.remove(vm_space, addr);
+                }
             }
         }
 
+        if let Some(rmap) = rmap {
+            rmap.insert(
+                vm_space,
+                RmapEntry {
+                    vaddr: vm_mapping.map_to_addr(),
+                    offset: vm_mapping.vmo().unwrap().offset(),
+                    size: vm_mapping.map_size(),
+                },
+            );
+        }
         self.vm_mappings.insert(vm_mapping);
     }
 
     /// Removes a `VmMapping` based on the provided key from the `Vmar`.
-    fn remove(&mut self, key: &Vaddr) -> Option<VmMapping> {
+    fn remove(&mut self, key: &Vaddr) -> Option<(VmMapping, RmapToRemove)> {
         let vm_mapping = self.vm_mappings.remove(key)?;
         self.total_vm -= vm_mapping.map_size();
-        Some(vm_mapping)
+
+        let rmap_to_remove = RmapToRemove::new(vm_mapping.vmo().map(MappedVmo::vmo).cloned());
+
+        Some((vm_mapping, rmap_to_remove))
     }
 
     /// Finds a set of [`VmMapping`]s that intersect with the provided range.
@@ -273,7 +336,7 @@ impl VmarInner {
     /// the mappings that intersect with the range.
     fn alloc_free_region_exact_truncate(
         &mut self,
-        vm_space: &VmSpace,
+        vm_space: &Arc<VmSpace>,
         offset: Vaddr,
         size: usize,
         rss_delta: &mut RssDelta,
@@ -285,17 +348,24 @@ impl VmarInner {
         }
 
         for vm_mapping_addr in mappings_to_remove {
-            let vm_mapping = self.remove(&vm_mapping_addr).unwrap();
+            let (vm_mapping, rmap_to_remove) = self.remove(&vm_mapping_addr).unwrap();
+            let mut rmap = rmap_to_remove.remove(vm_space, vm_mapping_addr);
+
             let vm_mapping_range = vm_mapping.range();
             let intersected_range = get_intersected_range(&range, &vm_mapping_range);
 
             let (left, taken, right) = vm_mapping.split_range(&intersected_range);
             if let Some(left) = left {
-                self.insert_without_try_merge(left);
+                self.insert_without_try_merge(vm_space, left, rmap.as_deref_mut());
             }
             if let Some(right) = right {
-                self.insert_without_try_merge(right);
+                self.insert_without_try_merge(vm_space, right, rmap.as_deref_mut());
             }
+
+            // Note that `rmap` must be dropped before `taken`. Otherwise,
+            // there is a possibility of a deadlock because a device mapping
+            // may attempt to access its reverse mappings in `Drop`.
+            drop(rmap);
 
             rss_delta.add(taken.rss_type(), -(taken.unmap(vm_space) as isize));
         }
@@ -362,7 +432,7 @@ impl VmarInner {
     /// Enlarges the last mapping if the new size is larger.
     fn resize_mapping(
         &mut self,
-        vm_space: &VmSpace,
+        vm_space: &Arc<VmSpace>,
         map_addr: Vaddr,
         old_size: usize,
         new_size: usize,
@@ -417,9 +487,10 @@ impl VmarInner {
         }
 
         self.check_extra_size_fits_rlimit(new_size - old_size)?;
-        let last_mapping = self.remove(&last_mapping_addr).unwrap();
+        let (last_mapping, rmap_to_remove) = self.remove(&last_mapping_addr).unwrap();
+        let mut rmap = rmap_to_remove.remove(vm_space, last_mapping_addr);
         let last_mapping = last_mapping.enlarge(new_size - old_size);
-        self.insert_try_merge(last_mapping);
+        self.insert_try_merge(vm_space, last_mapping, rmap.as_deref_mut());
         Ok(())
     }
 }

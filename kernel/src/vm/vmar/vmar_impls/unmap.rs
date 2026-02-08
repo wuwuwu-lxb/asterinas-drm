@@ -17,6 +17,14 @@ impl Vmar {
     #[expect(dead_code)] // TODO: This should be called when the last process drops the VMAR.
     pub fn clear(&self) {
         let mut inner = self.inner.write();
+        for vm_mapping in inner.vm_mappings.iter() {
+            if let Some(vmo) = vm_mapping.vmo() {
+                vmo.vmo()
+                    .rmap()
+                    .lock()
+                    .remove(&self.vm_space, vm_mapping.map_to_addr());
+            }
+        }
         inner.vm_mappings.clear();
 
         // Keep `inner` locked to avoid race conditions.

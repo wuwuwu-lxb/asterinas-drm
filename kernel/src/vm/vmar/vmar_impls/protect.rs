@@ -43,7 +43,9 @@ impl Vmar {
             let new_perms = perms | (vm_mapping_perms & VmPerms::ALL_MAY_PERMS);
             new_perms.check()?;
 
-            let vm_mapping = inner.remove(&vm_mapping_range.start).unwrap();
+            let (vm_mapping, rmap_to_remove) = inner.remove(&vm_mapping_range.start).unwrap();
+            let mut rmap = rmap_to_remove.remove(vm_space, vm_mapping_range.start);
+
             let vm_mapping_range = vm_mapping.range();
             let intersected_range = get_intersected_range(&range, &vm_mapping_range);
 
@@ -52,15 +54,15 @@ impl Vmar {
 
             // Puts the rest back.
             if let Some(left) = left {
-                inner.insert_without_try_merge(left);
+                inner.insert_without_try_merge(vm_space, left, rmap.as_deref_mut());
             }
             if let Some(right) = right {
-                inner.insert_without_try_merge(right);
+                inner.insert_without_try_merge(vm_space, right, rmap.as_deref_mut());
             }
 
             // Protects part of the `VmMapping`.
-            let taken = taken.protect(vm_space.as_ref(), new_perms);
-            inner.insert_try_merge(taken);
+            let taken = taken.protect(vm_space, new_perms);
+            inner.insert_try_merge(vm_space, taken, rmap.as_deref_mut());
         }
 
         if last_mapping_end < range.end {

@@ -23,9 +23,11 @@ use crate::prelude::*;
 
 mod options;
 mod pager;
+mod rmap;
 
 pub use options::VmoOptions;
 pub use pager::Pager;
+pub(super) use rmap::{Rmap, RmapEntry};
 
 /// Virtual Memory Objects (VMOs) are a type of capability that represents a
 /// range of memory pages.
@@ -79,6 +81,8 @@ pub struct Vmo {
     // not have the knowledge to determine if they belong to memfd. We may want to enhance
     // `VmoOptions` to make VMOs aware of whether its writable mappings should be tracked.
     writable_mapping_status: WritableMappingStatus,
+    /// Reverse mappings.
+    rmap: Mutex<Rmap>,
 }
 
 impl Debug for Vmo {
@@ -466,6 +470,11 @@ impl Vmo {
         // Only writable file-backed mappings may need to be tracked.
         debug_assert!(self.pager.is_some());
         &self.writable_mapping_status
+    }
+
+    /// Returns reverse mappings of the VMO.
+    pub fn rmap(&self) -> &Mutex<Rmap> {
+        &self.rmap
     }
 }
 

@@ -359,6 +359,9 @@ impl<'a> VmarMapOptions<'a> {
             perms | may_perms,
         );
 
+        let vmo_for_rmap = vm_mapping.vmo().map(MappedVmo::vmo).cloned();
+        let mut rmap = vmo_for_rmap.as_ref().map(|vmo| vmo.rmap().lock());
+
         // Populate device memory if needed before adding to VMAR.
         //
         // We have to map before inserting the `VmMapping` into the tree,
@@ -370,7 +373,7 @@ impl<'a> VmarMapOptions<'a> {
         }
 
         // Add the mapping to the VMAR.
-        inner.insert_try_merge(vm_mapping);
+        inner.insert_try_merge(parent.vm_space(), vm_mapping, rmap.as_deref_mut());
 
         Ok(map_to_addr)
     }

@@ -9,7 +9,7 @@ use ostd::mm::{FrameAllocOptions, UFrame, USegment};
 use xarray::XArray;
 
 use super::{Pager, Vmo, VmoFlags, WritableMappingStatus};
-use crate::prelude::*;
+use crate::{prelude::*, vm::vmo::rmap::Rmap};
 
 /// Options for allocating a root VMO.
 ///
@@ -88,12 +88,14 @@ fn alloc_vmo(size: usize, flags: VmoFlags, pager: Option<Arc<dyn Pager>>) -> Res
     let size = size.align_up(PAGE_SIZE);
     let pages = committed_pages_if_continuous(flags, size)?;
     let writable_mapping_status = WritableMappingStatus::default();
+    let rmap = Rmap::new();
     Ok(Vmo {
         pager,
         flags,
         pages,
         size: AtomicUsize::new(size),
         writable_mapping_status,
+        rmap: Mutex::new(rmap),
     })
 }
 
