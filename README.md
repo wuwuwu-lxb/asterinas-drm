@@ -179,6 +179,8 @@ build and run Asterinas NixOS in a VM:
 
 See [The Asterinas Book](https://asterinas.github.io/book/) to learn more about the project.
 
+> **重要提示**：book 中的 **Summary（摘要）** 是关键的导读内容，建议读者首先阅读 Summary 以快速了解整体架构和核心概念。
+
 ## License
 
 Asterinas's source code and documentation primarily use the
