@@ -18,6 +18,8 @@
 * [The Framekernel Architecture](kernel/the-framekernel-architecture.md)
 * [Architecture Overview](kernel/architecture-overview.md)
 * [DRM Integration Guide](kernel/drm-integration.md)
+* [SimpleDRM Design and Implementation (Chinese)](kernel/simpledrm-design.md)
+* [SimpleDRM Design and Implementation (English)](kernel/simpledrm-design-en.md)
 * [Linux Compatibility](kernel/linux-compatibility/README.md)
     * [Syscall Flag Coverage](kernel/linux-compatibility/syscall-flag-coverage/README.md)
         * [System Call Matching Language (SCML)](kernel/linux-compatibility/syscall-flag-coverage/system-call-matching-language.md)
