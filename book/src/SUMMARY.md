@@ -18,6 +18,8 @@
 * [The Framekernel Architecture](kernel/the-framekernel-architecture.md)
 * [Architecture Overview](kernel/architecture-overview.md)
 * [DRM Integration Guide](kernel/drm-integration.md)
+* [Getting Started from Zero](kernel/getting-started-from-zero.md)
+* [Week One Learning Plan](kernel/week-one-learning-plan.md)
 * [SimpleDRM Design and Implementation (Chinese)](kernel/simpledrm-design.md)
 * [SimpleDRM Design and Implementation (English)](kernel/simpledrm-design-en.md)
 * [Linux Compatibility](kernel/linux-compatibility/README.md)

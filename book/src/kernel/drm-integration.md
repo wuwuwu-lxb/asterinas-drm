@@ -70,17 +70,22 @@ tearing is significantly reduced compared to direct rendering.
 
 ## Integration Points
 
-### 1. `aster-framebuffer` (modify / extend)
+### 1. `aster-framebuffer` (extend if needed)
 
-`FrameBuffer` already owns the MMIO mapping.
-It needs two additions:
+`FrameBuffer` already owns the MMIO mapping and provides the following
+public API that DRM code can use directly:
 
-* A `flush(src: &[u8])` / `flush_region(...)` method that accepts
-  a caller-supplied byte slice and copies it to `IoMem`.
-* Exposure of the geometry (`width`, `height`, `line_size`,
-  `pixel_format`) — these are already public.
+| Method | Purpose |
+|--------|---------|
+| `write_bytes_at(offset, bytes)` | Write raw bytes to MMIO framebuffer at offset |
+| `width()`, `height()`, `line_size()` | Framebuffer geometry |
+| `pixel_format()` | Current pixel format |
+| `render_pixel(pixel)` | Convert `Pixel` to hardware format |
 
-No `unsafe` code is needed; `IoMem::write_bytes` is the existing path.
+**No new API is required for Phase 1.** `write_bytes_at` (line 171 in `framebuffer.rs`)
+already provides the functionality described as `flush_region` in older drafts.
+If dirty-rectangle optimisation is needed later, `write_bytes_at` can be called
+with a sub-region offset and length.
 
 ### 2. New component `aster-drm` (`kernel/comps/drm/`)
 
@@ -227,10 +232,19 @@ with no corruption or flicker.
 
 **Goal:** decouple text console from the DRM back buffer.
 
-1. Extend `aster-framebuffer` with a `flush_region` API
-   (dirty-rectangle optimisation for partial updates).
-2. Gate `FramebufferConsole` so it renders into the back buffer
-   rather than directly into MMIO.
+> **⚠️ Important clarification:** `FramebufferConsole` has its own internal
+> scroll-back buffer (`ConsoleState.bytes`, `console.rs:116`) which is
+> **independent** of the DRM back buffer. The console's `bytes` buffer is
+> used for `shift_lines_up()` rollback and is NOT the same as the DRM
+> back buffer. When both DRM and the console are active simultaneously,
+> they must be coordinated carefully.
+
+1. Add a `flush_region(offset, len)` helper method to `FrameBuffer`
+   if dirty-rectangle optimisation is desired for partial screen updates.
+   (The existing `write_bytes_at` already supports region writes.)
+2. Gate `FramebufferConsole` so it optionally renders into the DRM back buffer
+   rather than directly into MMIO — requires a design decision on how
+   the console buffer integrates with the DRM buffer model.
 3. Add a `vsync`-style periodic flush (timer callback or explicit call).
 4. Protect `BackBuffer` with `SpinLock<LocalIrqDisabled>`
    to allow interrupt-safe access.
