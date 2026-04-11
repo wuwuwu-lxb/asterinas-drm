@@ -6,9 +6,10 @@
 //! drawing surface. All rendering operations write to this buffer first,
 //! and the final `present()` call copies it to the hardware framebuffer.
 
+use alloc::vec;
 use alloc::vec::Vec;
 
-use ostd::{Error, Result};
+use ostd::Result;
 
 /// The back buffer for double-buffered rendering.
 ///
@@ -90,7 +91,7 @@ impl BackBuffer {
     /// Writes a single pixel at the specified offset.
     pub fn write_pixel_at(&mut self, offset: usize, pixel: &[u8]) -> Result<()> {
         if offset + pixel.len() > self.data.len() {
-            return Err(Error::OutOfBounds);
+            return Err(ostd::Error::InvalidArgs);
         }
         self.data[offset..offset + pixel.len()].copy_from_slice(pixel);
         Ok(())
@@ -99,7 +100,7 @@ impl BackBuffer {
     /// Writes raw bytes at the specified offset.
     pub fn write_bytes_at(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
         if offset + bytes.len() > self.data.len() {
-            return Err(Error::OutOfBounds);
+            return Err(ostd::Error::InvalidArgs);
         }
         self.data[offset..offset + bytes.len()].copy_from_slice(bytes);
         Ok(())

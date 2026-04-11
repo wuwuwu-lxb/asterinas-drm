@@ -37,6 +37,7 @@ members = [
     "kernel/comps/pci",
     "kernel/comps/softirq",
     "kernel/comps/systree",
+    "kernel/comps/drm",
     "kernel/comps/time",
     "kernel/comps/uart",
     "kernel/comps/virtio",
@@ -108,6 +109,7 @@ aster-network = { path = "kernel/comps/network" }
 aster-pci = { path = "kernel/comps/pci" }
 aster-softirq = { path = "kernel/comps/softirq" }
 aster-systree = { path = "kernel/comps/systree" }
+aster-drm = { path = "kernel/comps/drm" }
 aster-time = { path = "kernel/comps/time" }
 aster-uart = { path = "kernel/comps/uart" }
 aster-virtio = { path = "kernel/comps/virtio" }

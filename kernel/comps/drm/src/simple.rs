@@ -9,9 +9,8 @@
 use alloc::sync::Arc;
 
 use ostd::Result;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard};
 
-use super::BackBuffer;
 use crate::buffer::BackBuffer;
 
 /// A simple DRM driver providing double-buffered rendering.
@@ -41,13 +40,13 @@ impl SimpleDrm {
         let back_buffer = BackBuffer::new(width, height, bpp, line_size);
 
         Some(Self {
-            fb,
+            fb: fb.clone(),
             back_buffer: Mutex::new(back_buffer),
         })
     }
 
-    /// Returns a mutable reference to the back buffer.
-    pub fn back_buffer(&self) -> Mutex<'_, BackBuffer> {
+    /// Returns a locked reference to the back buffer.
+    pub fn back_buffer(&self) -> MutexGuard<'_, BackBuffer> {
         self.back_buffer.lock()
     }
 
