@@ -132,6 +132,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aster-drm"
+version = "0.1.0"
+dependencies = [
+ "aster-framebuffer",
+ "component",
+ "log",
+ "ostd",
+ "spin",
+]
+
+[[package]]
 name = "aster-framebuffer"
 version = "0.1.0"
 dependencies = [
@@ -179,6 +190,7 @@ dependencies = [
  "aster-block",
  "aster-cmdline",
  "aster-console",
+ "aster-drm",
  "aster-framebuffer",
  "aster-i8042",
  "aster-input",
