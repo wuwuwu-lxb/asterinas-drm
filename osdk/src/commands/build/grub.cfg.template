@@ -8,6 +8,8 @@ set timeout_style=#GRUB_TIMEOUT_STYLE#
 set timeout=#GRUB_TIMEOUT#
 
 menuentry 'asterinas' {
+    insmod all_video
+    set gfxpayload=keep
     #GRUB_CMD_KERNEL# #KERNEL# #KERNEL_COMMAND_LINE#
     #GRUB_CMD_INITRAMFS#
     boot

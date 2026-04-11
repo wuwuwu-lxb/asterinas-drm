@@ -90,11 +90,8 @@ COMMON_QEMU_ARGS="\
     -smp ${SMP:-1} \
     -m ${MEM:-8G} \
     --no-reboot \
-    -nographic \
     -display vnc=0.0.0.0:${VNC_PORT:-42} \
-    -vga virtio \
-    -global VGA.vgamem_mb=64 \
-    -global VGA.edid=on \
+    -vga std \
     -monitor chardev:mux \
     -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log \
     $NETDEV_ARGS \
