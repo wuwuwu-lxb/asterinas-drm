@@ -14,6 +14,9 @@ use crate::prelude::*;
 use super::{Device, DeviceType};
 use crate::fs::file::FileIo;
 
+pub(crate) use file::DrmFileHandle;
+pub(crate) use init::init_in_first_kthread;
+
 /// DRM 设备结构体 — 对应 /dev/dri/card0
 ///
 /// 该结构体在 init_in_first_kthread() 中被注册到字符设备注册表。

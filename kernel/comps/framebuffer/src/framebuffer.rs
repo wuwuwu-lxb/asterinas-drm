@@ -60,8 +60,11 @@ struct FbCmap {
 pub static FRAMEBUFFER: Once<Arc<FrameBuffer>> = Once::new();
 
 pub(crate) fn init() {
-    let Some(framebuffer_arg) = boot_info().framebuffer_arg else {
-        log::warn!("Framebuffer not found");
+    let fb_arg = boot_info().framebuffer_arg;
+    log::info!("Framebuffer boot arg: {:?}", fb_arg);
+
+    let Some(framebuffer_arg) = fb_arg else {
+        log::warn!("Framebuffer not found in boot info");
         return;
     };
 

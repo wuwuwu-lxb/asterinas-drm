@@ -11,10 +11,7 @@
 //!
 //! 参考：Linux 内核 include/uapi/drm/drm.h
 
-use crate::{
-    prelude::*,
-    util::ioctl::{ioc, InOutData, OutData},
-};
+use crate::{prelude::*, util::ioctl::{ioc, InOutData, OutData}};
 
 /// DRM ioctl 使用说明：
 /// - DRM 核心 ioctl 使用 magic = 0x64 ('d')
@@ -30,7 +27,7 @@ use crate::{
 ///     _IOC(_IOC_READ | _IOC_WRITE, DRM_IOCTL_BASE, 0x00, \
 ///          sizeof(struct drm_version))
 /// ```
-pub(super) type GetVersion = ioc!(DRM_IOCTL_VERSION, 0x64, 0x00, OutData<DrmVersion>);
+pub(super) type GetVersion = ioc!(Version, 0x64, 0x00, OutData<DrmVersion>);
 
 /// DRM_IOCTL_GET_CAP (0x6409)
 ///
@@ -42,7 +39,7 @@ pub(super) type GetVersion = ioc!(DRM_IOCTL_VERSION, 0x64, 0x00, OutData<DrmVers
 ///     _IOC(_IOC_READ | _IOC_WRITE, DRM_IOCTL_BASE, 0x09, \
 ///          sizeof(struct drm_get_cap))
 /// ```
-pub(super) type GetCap = ioc!(DRM_IOCTL_GET_CAP, 0x64, 0x09, InOutData<DrmGetCap>);
+pub(super) type GetCap = ioc!(GetCap, 0x64, 0x09, InOutData<DrmGetCap>);
 
 /// DRM_IOCTL_MODE_GETRESOURCES (0x40C0)
 ///
@@ -55,7 +52,7 @@ pub(super) type GetCap = ioc!(DRM_IOCTL_GET_CAP, 0x64, 0x09, InOutData<DrmGetCap
 ///     _IOC(_IOC_READ, 0x40 + 2, 0xC0, sizeof(struct drm_mode_card_res))
 /// ```
 pub(super) type GetResources = ioc!(
-    DRM_IOCTL_MODE_GETRESOURCES,
+    GetResources,
     0x42,
     0xC0,
     OutData<DrmModeCardRes>
@@ -71,7 +68,7 @@ pub(super) type GetResources = ioc!(
 ///
 /// Linux 参考：include/uapi/drm/drm.h
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmVersion {
     /// 驱动主版本号
     pub version_major: i32,
@@ -85,6 +82,19 @@ pub struct DrmVersion {
     pub date: [u8; 32],
     /// 驱动描述
     pub desc: [u8; 32],
+}
+
+impl Default for DrmVersion {
+    fn default() -> Self {
+        Self {
+            version_major: 0,
+            version_minor: 0,
+            version_patchlevel: 0,
+            name: [0u8; 64],
+            date: [0u8; 32],
+            desc: [0u8; 32],
+        }
+    }
 }
 
 /// DRM 能力查询结构体 — `struct drm_get_cap` in Linux

@@ -35,6 +35,7 @@ info_request:
     .short 0            // Required
     .long  info_request_end - info_request
     .long  6            // Memory map request
+    .long  8            // Framebuffer info request
     .long  15           // ACPI (new) request
 info_request_end:
 

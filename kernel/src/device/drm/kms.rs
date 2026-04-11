@@ -7,8 +7,7 @@
 //! - 1 个 Encoder（编码器）
 //! - 1 个 Connector（连接器）
 
-use crate::{return_errno_with_message, util::ioctl::{Ioctl, OutData}};
-use ostd::Result;
+use crate::{prelude::*, return_errno_with_message, util::ioctl::{Ioctl, InOutData, OutData}};
 
 use super::ioctl_defs::{DrmGetCap, DrmModeCardRes, DrmVersion};
 
@@ -52,22 +51,20 @@ pub fn handle_version(cmd: &Ioctl<0x64, 0x00, true, OutData<DrmVersion>>) -> Res
 ///
 /// 根据 capability 查询设备能力。
 pub fn handle_get_cap(
-    cmd: &Ioctl<0x64, 0x09, true, super::ioctl_defs::InOutData<DrmGetCap>>,
+    cmd: &Ioctl<0x64, 0x09, true, InOutData<DrmGetCap>>,
 ) -> Result<()> {
-    cmd.with_data_ptr(|ptr: &mut super::ioctl_defs::DrmGetCap| {
-        let mut cap = ptr.read()?;
-        cap.value = match cap.capability {
-            DrmGetCap::DRM_CAP_DUMB_BUFFER => 1,
-            DrmGetCap::DRM_CAP_VBLANK_HIGH_CRTC => 0,
-            DrmGetCap::DRM_CAP_DUMB_PREFERRED_DEPTH => 0,
-            _ => {
-                log::debug!("unknown DRM capability: {}", cap.capability);
-                return_errno_with_message!(Errno::EINVAL, "unknown DRM capability");
-            }
-        };
-        ptr.write(&cap)?;
-        Ok(())
-    })?
+    let mut cap = cmd.read()?;
+    cap.value = match cap.capability {
+        DrmGetCap::DRM_CAP_DUMB_BUFFER => 1,
+        DrmGetCap::DRM_CAP_VBLANK_HIGH_CRTC => 0,
+        DrmGetCap::DRM_CAP_DUMB_PREFERRED_DEPTH => 0,
+        _ => {
+            log::debug!("unknown DRM capability: {}", cap.capability);
+            return_errno_with_message!(Errno::EINVAL, "unknown DRM capability");
+        }
+    };
+    cmd.write(&cap)?;
+    Ok(())
 }
 
 /// 处理 DRM_IOCTL_MODE_GETRESOURCES ioctl
