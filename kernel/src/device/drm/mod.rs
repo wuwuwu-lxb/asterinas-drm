@@ -7,11 +7,11 @@ mod init;
 mod ioctl_defs;
 mod kms;
 
-use alloc::sync::Arc;
 use device_id::{DeviceId, MajorId, MinorId};
+
 use crate::prelude::*;
 
-use super::{Device, DeviceType, registry::char};
+use super::{Device, DeviceType};
 use crate::fs::file::FileIo;
 
 /// DRM 设备结构体 — 对应 /dev/dri/card0

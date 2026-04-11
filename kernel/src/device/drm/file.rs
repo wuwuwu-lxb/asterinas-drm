@@ -71,17 +71,17 @@ impl FileIo for DrmFileHandle {
         dispatch_ioctl!(match raw_ioctl {
             // DRM_IOCTL_VERSION (0x6400) — 返回驱动版本
             cmd @ GetVersion => {
-                kms::handle_version(cmd)?;
+                kms::handle_version(&cmd)?;
                 Ok(0)
             }
             // DRM_IOCTL_GET_CAP (0x6409) — 返回设备能力
             cmd @ GetCap => {
-                kms::handle_get_cap(cmd)?;
+                kms::handle_get_cap(&cmd)?;
                 Ok(0)
             }
             // DRM_IOCTL_MODE_GETRESOURCES (0x40C0) — 返回 KMS 对象信息
             cmd @ GetResources => {
-                kms::handle_get_resources(cmd)?;
+                kms::handle_get_resources(&cmd)?;
                 Ok(0)
             }
             _ => {

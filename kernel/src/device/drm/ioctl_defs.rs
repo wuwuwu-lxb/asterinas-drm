@@ -11,7 +11,10 @@
 //!
 //! 参考：Linux 内核 include/uapi/drm/drm.h
 
-use crate::{prelude::*, util::ioctl::{ioc, InData, InOutData, OutData}};
+use crate::{
+    prelude::*,
+    util::ioctl::{ioc, InOutData, OutData},
+};
 
 /// DRM ioctl 使用说明：
 /// - DRM 核心 ioctl 使用 magic = 0x64 ('d')
