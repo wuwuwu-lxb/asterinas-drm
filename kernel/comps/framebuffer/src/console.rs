@@ -8,13 +8,13 @@ use aster_console::{
     mode::{ConsoleMode, KeyboardMode, KeyboardModeFlags},
 };
 use ostd::{
-    mm::{HasSize, VmReader},
+    mm::VmReader,
     sync::{LocalIrqDisabled, SpinLock, SpinLockGuard},
 };
 use spin::Once;
 
 use crate::{
-    FRAMEBUFFER, FrameBuffer, Pixel,
+    FRAMEBUFFER, FrameBufferOps, Pixel,
     ansi_escape::{EraseInDisplay, EscapeFsm, EscapeOp},
 };
 
@@ -96,7 +96,7 @@ impl AnyConsoleDevice for FramebufferConsole {
 
 impl FramebufferConsole {
     /// Creates a new framebuffer console.
-    pub(self) fn new(framebuffer: Arc<FrameBuffer>) -> Self {
+    pub(self) fn new(framebuffer: Arc<dyn FrameBufferOps + Send + Sync>) -> Self {
         let callbacks = ConsoleCallbacks {
             callbacks: Vec::new(),
             keyboard_mode: KeyboardMode::Unicode,
@@ -113,7 +113,7 @@ impl FramebufferConsole {
             font: BitmapFont::new_basic8x8(),
             is_output_enabled: true,
 
-            bytes: alloc::vec![0u8; framebuffer.io_mem().size()],
+            bytes: alloc::vec![0u8; framebuffer.size()],
             backend: framebuffer,
         };
 
@@ -163,7 +163,6 @@ impl ConsoleCallbacks {
     }
 }
 
-#[derive(Debug)]
 struct ConsoleState {
     x_pos: usize,
     y_pos: usize,
@@ -174,7 +173,20 @@ struct ConsoleState {
     is_output_enabled: bool,
 
     bytes: Vec<u8>,
-    backend: Arc<FrameBuffer>,
+    backend: Arc<dyn FrameBufferOps + Send + Sync>,
+}
+
+impl core::fmt::Debug for ConsoleState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ConsoleState")
+            .field("x_pos", &self.x_pos)
+            .field("y_pos", &self.y_pos)
+            .field("fg_color", &self.fg_color)
+            .field("bg_color", &self.bg_color)
+            .field("is_output_enabled", &self.is_output_enabled)
+            .field("bytes_len", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl ConsoleState {
@@ -210,9 +222,9 @@ impl ConsoleState {
     }
 
     fn shift_lines_up(&mut self) {
-        let offset = self.backend.calc_offset(0, self.font.height()).as_usize();
+        let offset = self.backend.pixel_offset(0, self.font.height());
         self.bytes.copy_within(offset.., 0);
-        self.bytes[self.backend.io_mem().size() - offset..].fill(0);
+        self.bytes[self.backend.size() - offset..].fill(0);
 
         if self.is_output_enabled {
             self.backend.write_bytes_at(0, &self.bytes).unwrap();
@@ -245,10 +257,11 @@ impl ConsoleState {
 
         let pixel_size = fg_pixel.nbytes();
 
-        let mut offset = self.backend.calc_offset(self.x_pos, self.y_pos);
+        let mut offset = self.backend.pixel_offset(self.x_pos, self.y_pos);
+        let line_stride = self.backend.line_size();
 
         for row in font_ch.rows() {
-            let off_st = offset.as_usize();
+            let off_st = offset;
             let off_ed = off_st + pixel_size * self.font.width();
             let render_buf = &mut self.bytes[off_st..off_ed];
 
@@ -264,7 +277,7 @@ impl ConsoleState {
                 self.backend.write_bytes_at(off_st, render_buf).unwrap();
             }
 
-            offset.y_add(1);
+            offset += line_stride;
         }
     }
 
@@ -324,7 +337,7 @@ impl ConsoleState {
         let row_bytes = (x1 - x0) * rendered_pixel_size;
 
         for y in y0..y1 {
-            let off = self.backend.calc_offset(x0, y).as_usize();
+            let off = self.backend.pixel_offset(x0, y);
             let buf = &mut self.bytes[off..off + row_bytes];
 
             // Write pixels to the console buffer.

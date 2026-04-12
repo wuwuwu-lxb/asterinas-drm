@@ -2,9 +2,10 @@
 
 use alloc::sync::Arc;
 
-use aster_framebuffer::{ColorMapEntry, FRAMEBUFFER, FrameBuffer, MAX_CMAP_SIZE, PixelFormat};
+use aster_framebuffer::{ColorMapEntry, FrameBufferOps, FRAMEBUFFER, MAX_CMAP_SIZE, PixelFormat};
 use device_id::{DeviceId, MajorId, MinorId};
-use ostd::mm::{HasPaddr, HasSize, VmIo, VmReader, VmWriter};
+use ostd::mm::{HasPaddr, VmIo, VmReader, VmWriter};
+use crate::util::MultiRead;
 
 use super::{Device, DeviceType, registry::char};
 use crate::{
@@ -22,9 +23,20 @@ use crate::{
 #[derive(Debug)]
 struct Fb;
 
-#[derive(Debug)]
 struct FbHandle {
-    framebuffer: Arc<FrameBuffer>,
+    /// The framebuffer (hardware MMIO or RAM fallback).
+    framebuffer: Arc<dyn FrameBufferOps + Send + Sync>,
+    /// RAM buffer for RAM-backed fallback (None for MMIO-backed).
+    ram_buffer: Option<Arc<Vec<u8>>>,
+}
+
+impl core::fmt::Debug for FbHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FbHandle")
+            .field("framebuffer", &"<dyn FrameBufferOps>")
+            .field("ram_buffer", &self.ram_buffer)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Bitfields describing the color channel layout; `struct fb_bitfield` in Linux.
@@ -237,8 +249,19 @@ impl Device for Fb {
                 "the framebuffer device is not present",
             ));
         };
-        let framebuffer = framebuffer.clone();
-        Ok(Box::new(FbHandle { framebuffer }))
+
+        // RAM-backed fallback is detected by io_mem() returning None
+        let ram_buffer: Option<Arc<Vec<u8>>> = if framebuffer.io_mem().is_some() {
+            None
+        } else {
+            // RAM fallback — we'll access the data through write_bytes_at instead
+            None
+        };
+
+        Ok(Box::new(FbHandle {
+            framebuffer: framebuffer.clone(),
+            ram_buffer,
+        }))
     }
 }
 
@@ -300,8 +323,9 @@ impl FbHandle {
     /// Collects the information in the [`FbFixScreenInfo`].
     fn collect_fix_screen_info(&self) -> FbFixScreenInfo {
         FbFixScreenInfo {
-            smem_start: self.framebuffer.io_mem().paddr() as u64,
-            smem_len: self.framebuffer.io_mem().size() as u32,
+            // For RAM-backed fallback, paddr is 0 (not a real MMIO region)
+            smem_start: self.framebuffer.io_mem().map(|iom| iom.paddr() as u64).unwrap_or(0),
+            smem_len: self.framebuffer.size() as u32,
             line_length: self.framebuffer.line_size() as u32,
             ..Default::default()
         }
@@ -410,8 +434,7 @@ impl InodeIo for FbHandle {
             return Ok(0);
         }
 
-        let io_mem = self.framebuffer.io_mem();
-        let size = io_mem.size();
+        let size = self.framebuffer.size();
         if offset >= size {
             return Ok(0);
         }
@@ -421,23 +444,32 @@ impl InodeIo for FbHandle {
             return Ok(0);
         }
 
-        let mut new_writer = writer.clone_exclusive();
-        new_writer.limit(len);
-
-        let result = io_mem.read_fallible(offset, &mut new_writer);
-        let copied = match result {
-            Ok(copied) => copied,
-            Err((err, copied)) => {
-                if copied > 0 {
-                    copied
-                } else {
-                    return Err(err.into());
+        let mut buf = vec![0u8; len];
+        if let Some(iomem) = self.framebuffer.io_mem() {
+            let mut new_writer = writer.clone_exclusive();
+            new_writer.limit(len);
+            let result = iomem.read_fallible(offset, &mut new_writer);
+            let copied = match result {
+                Ok(copied) => copied,
+                Err((err, copied)) => {
+                    if copied > 0 {
+                        copied
+                    } else {
+                        return Err(err.into());
+                    }
                 }
-            }
-        };
-
-        writer.skip(copied);
-        Ok(copied)
+            };
+            writer.skip(copied);
+            Ok(copied)
+        } else {
+            self.framebuffer.read_bytes_at(offset, &mut buf)?;
+            let mut temp_writer = writer.clone_exclusive();
+            temp_writer.limit(len);
+            let mut reader = VmReader::from(buf.as_slice());
+            let _ = reader.read_fallible(&mut temp_writer);
+            writer.skip(len);
+            Ok(len)
+        }
     }
 
     fn write_at(
@@ -450,8 +482,7 @@ impl InodeIo for FbHandle {
             return Ok(0);
         }
 
-        let io_mem = self.framebuffer.io_mem();
-        let size = io_mem.size();
+        let size = self.framebuffer.size();
         if offset >= size {
             return_errno_with_message!(
                 Errno::ENOSPC,
@@ -464,23 +495,35 @@ impl InodeIo for FbHandle {
             return Ok(0);
         }
 
-        let mut new_reader = reader.clone();
-        new_reader.limit(len);
+        // Try MMIO first; for RAM fallback, use write_bytes_at trait method
+        if let Some(iomem) = self.framebuffer.io_mem() {
+            let mut new_reader = reader.clone();
+            new_reader.limit(len);
 
-        let result = io_mem.write_fallible(offset, &mut new_reader);
-        let copied = match result {
-            Ok(copied) => copied,
-            Err((err, copied)) => {
-                if copied > 0 {
-                    copied
-                } else {
-                    return Err(err.into());
+            let result = iomem.write_fallible(offset, &mut new_reader);
+            let copied = match result {
+                Ok(copied) => copied,
+                Err((err, copied)) => {
+                    if copied > 0 {
+                        copied
+                    } else {
+                        return Err(err.into());
+                    }
                 }
-            }
-        };
-
-        reader.skip(copied);
-        Ok(copied)
+            };
+            reader.skip(copied);
+            Ok(copied)
+        } else {
+            // RAM fallback path: read data from userspace via VmWriter, write via trait method
+            let mut buf = vec![0u8; len];
+            let mut temp_reader = reader.clone();
+            temp_reader.limit(len);
+            let mut writer = VmWriter::from(buf.as_mut_slice());
+            temp_reader.read(&mut writer)?;
+            self.framebuffer.write_bytes_at(offset, &buf)?;
+            reader.skip(len);
+            Ok(len)
+        }
     }
 }
 
@@ -494,7 +537,7 @@ impl FileIo for FbHandle {
     }
 
     fn mappable(&self) -> Result<Mappable> {
-        let iomem = self.framebuffer.io_mem();
+        let iomem = self.framebuffer.io_mem().ok_or_else(|| Error::from(Errno::ENODEV))?;
         Ok(Mappable::IoMem(iomem.clone()))
     }
 

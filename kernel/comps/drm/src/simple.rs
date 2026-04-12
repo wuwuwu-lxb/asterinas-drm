@@ -8,6 +8,7 @@
 
 use alloc::sync::Arc;
 
+use aster_framebuffer::{FrameBufferOps, DEFAULT_FB_BPP, DEFAULT_FB_HEIGHT, DEFAULT_FB_WIDTH};
 use ostd::Result;
 use spin::{Mutex, MutexGuard};
 
@@ -19,8 +20,9 @@ use crate::buffer::BackBuffer;
 /// tear-free rendering. All drawing operations are performed on the back buffer,
 /// and `present()` atomically copies it to the hardware.
 pub struct SimpleDrm {
-    /// The hardware framebuffer
-    fb: Arc<aster_framebuffer::FrameBuffer>,
+    /// The framebuffer (hardware MMIO or RAM fallback).
+    /// None when no framebuffer is available at all.
+    fb: Option<Arc<dyn FrameBufferOps + Send + Sync>>,
     /// The back buffer for double-buffered rendering
     back_buffer: Mutex<BackBuffer>,
 }
@@ -31,16 +33,21 @@ impl SimpleDrm {
     /// This function acquires the global framebuffer and creates a corresponding
     /// back buffer with matching dimensions.
     pub fn new() -> Option<Self> {
-        let fb = aster_framebuffer::FRAMEBUFFER.get()?;
-        let width = fb.width();
-        let height = fb.height();
-        let bpp = fb.pixel_format().nbytes();
-        let line_size = fb.line_size();
+        let fb = aster_framebuffer::FRAMEBUFFER.get().cloned();
+        let (width, height, bpp, line_size) = match fb {
+            Some(ref f) => (f.width(), f.height(), f.pixel_format().nbytes(), f.line_size()),
+            None => {
+                // No hardware framebuffer — use default RAM fallback dimensions
+                log::info!("SimpleDrm: no hardware framebuffer, using RAM fallback");
+                (DEFAULT_FB_WIDTH, DEFAULT_FB_HEIGHT, DEFAULT_FB_BPP,
+                 DEFAULT_FB_WIDTH * DEFAULT_FB_BPP)
+            }
+        };
 
         let back_buffer = BackBuffer::new(width, height, bpp, line_size);
 
         Some(Self {
-            fb: fb.clone(),
+            fb,
             back_buffer: Mutex::new(back_buffer),
         })
     }
@@ -54,19 +61,22 @@ impl SimpleDrm {
     ///
     /// This copies the entire back buffer contents to the hardware framebuffer,
     /// resulting in a tear-free image update.
+    /// If no framebuffer is available, this is a no-op.
     pub fn present(&self) -> Result<()> {
         let back = self.back_buffer.lock();
-        self.fb.write_bytes_at(0, back.data())?;
+        if let Some(ref fb) = self.fb {
+            fb.write_bytes_at(0, back.data())?;
+        }
         Ok(())
     }
 
     /// Returns the width of the framebuffer.
     pub fn width(&self) -> usize {
-        self.fb.width()
+        self.fb.as_ref().map(|f| f.width()).unwrap_or(DEFAULT_FB_WIDTH)
     }
 
     /// Returns the height of the framebuffer.
     pub fn height(&self) -> usize {
-        self.fb.height()
+        self.fb.as_ref().map(|f| f.height()).unwrap_or(DEFAULT_FB_HEIGHT)
     }
 }
