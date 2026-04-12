@@ -59,6 +59,95 @@ pub(super) type GetResources = ioc!(
 );
 
 // ============================================================================
+// Dumb Buffer 数据结构（与 Linux 兼容的 C 结构体布局）
+// ============================================================================
+
+/// DRM_IOCTL_MODE_CREATE_DUMB (0xc0064b2)
+///
+/// 分配一个 Dumb Buffer。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_CREATE_DUMB \
+///     _IOC(_IOC_READ | _IOC_WRITE, 0x40 + 2, 0x02, sizeof(struct drm_mode_create_dumb))
+/// ```
+pub(super) type CreateDumb = ioc!(CreateDumb, 0x42, 0x02, InOutData<DrmModeCreateDumb>);
+
+/// DRM_IOCTL_MODE_MAP_DUMB (0xc01064b3)
+///
+/// 获取 Dumb Buffer 的 mmap 偏移量。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_MAP_DUMB \
+///     _IOC(_IOC_READ | _IOC_WRITE, 0x40 + 2, 0x03, sizeof(struct drm_mode_map_dumb))
+/// ```
+pub(super) type MapDumb = ioc!(MapDumb, 0x42, 0x03, InOutData<DrmModeMapDumb>);
+
+/// DRM_IOCTL_MODE_DESTROY_DUMB (0xc00464b4)
+///
+/// 销毁一个 Dumb Buffer。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_DESTROY_DUMB \
+///     _IOC(_IOC_WRITE, 0x40 + 2, 0x04, sizeof(struct drm_mode_destroy_dumb))
+/// ```
+pub(super) type DestroyDumb = ioc!(DestroyDumb, 0x42, 0x04, InOutData<DrmModeDestroyDumb>);
+
+/// Dumb Buffer 创建结构体 — `struct drm_mode_create_dumb` in Linux
+///
+/// 用户空间通过 DRM_IOCTL_MODE_CREATE_DUMB ioctl 创建 Dumb Buffer。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeCreateDumb {
+    /// 请求的高度（像素）
+    pub height: u32,
+    /// 请求的宽度（像素）
+    pub width: u32,
+    /// 每像素位数
+    pub bpp: u32,
+    /// 标志（未使用，设为 0）
+    pub flags: u32,
+    /// 返回：GEM handle
+    pub handle: u32,
+    /// 返回：每行字节数（pitch）
+    pub pitch: u32,
+    /// 返回：缓冲区大小（字节）
+    pub size: u64,
+}
+
+/// Dumb Buffer 映射结构体 — `struct drm_mode_map_dumb` in Linux
+///
+/// 用户空间通过 DRM_IOCTL_MODE_MAP_DUMB ioctl 获取 mmap 偏移量。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeMapDumb {
+    /// Buffer 的 GEM handle
+    pub handle: u32,
+    /// 填充字段（设为 0）
+    pub pad: u32,
+    /// 返回：mmap 偏移量
+    pub offset: u64,
+}
+
+/// Dumb Buffer 销毁结构体 — `struct drm_mode_destroy_dumb` in Linux
+///
+/// 用户空间通过 DRM_IOCTL_MODE_DESTROY_DUMB ioctl 销毁 Dumb Buffer。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeDestroyDumb {
+    /// Buffer 的 GEM handle
+    pub handle: u32,
+}
+
+// ============================================================================
 // DRM 数据结构（与 Linux 兼容的 C 结构体布局）
 // ============================================================================
 

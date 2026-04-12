@@ -13,7 +13,7 @@ use crate::{
     util::ioctl::{RawIoctl, dispatch_ioctl},
 };
 
-use super::{ioctl_defs, kms};
+use super::{dumb, ioctl_defs, kms};
 
 /// DRM 文件句柄
 ///
@@ -61,8 +61,11 @@ impl FileIo for DrmFileHandle {
     }
 
     fn mappable(&self) -> Result<Mappable> {
-        // Phase 3 不支持 mmap（属于 Phase 4 的 DUMB_BUFFER 范畴）
-        return_errno_with_message!(Errno::ENODEV, "mmap is not supported in Phase 3")
+        // Phase 4: Dumb Buffer mmap 支持
+        // 返回 DumbBufferManager 的 VMO
+        // mmap offset 指定具体的 buffer 槽位
+        let manager = dumb::get_manager();
+        Ok(Mappable::Vmo(manager.vmo()))
     }
 
     fn ioctl(&self, raw_ioctl: RawIoctl) -> Result<i32> {
@@ -84,6 +87,21 @@ impl FileIo for DrmFileHandle {
                 kms::handle_get_resources(&cmd)?;
                 Ok(0)
             }
+            // DRM_IOCTL_MODE_CREATE_DUMB (0x42c02) — 创建 Dumb Buffer
+            cmd @ CreateDumb => {
+                handle_create_dumb(&cmd)?;
+                Ok(0)
+            }
+            // DRM_IOCTL_MODE_MAP_DUMB (0x42c03) — 获取 Dumb Buffer 映射偏移
+            cmd @ MapDumb => {
+                handle_map_dumb(&cmd)?;
+                Ok(0)
+            }
+            // DRM_IOCTL_MODE_DESTROY_DUMB (0x42c04) — 销毁 Dumb Buffer
+            cmd @ DestroyDumb => {
+                handle_destroy_dumb(&cmd)?;
+                Ok(0)
+            }
             _ => {
                 log::debug!(
                     "unknown DRM ioctl: {:#x}",
@@ -93,4 +111,52 @@ impl FileIo for DrmFileHandle {
             }
         })
     }
+}
+
+/// 处理 DRM_IOCTL_MODE_CREATE_DUMB ioctl
+fn handle_create_dumb(cmd: &ioctl_defs::CreateDumb) -> Result<()> {
+    let mut args = cmd.read()?;
+
+    let manager = dumb::get_manager();
+    let (handle, pitch, offset, size) = manager.create_dumb(args.width, args.height, args.bpp)?;
+
+    args.handle = handle;
+    args.pitch = pitch;
+    args.size = size;
+    cmd.write(&args)?;
+
+    // 注意：offset 通过 MAP_DUMB ioctl 获取，而不是在这里返回
+    log::debug!(
+        "CREATE_DUMB: {}x{}x{}bpp, handle={}, pitch={}, size={}",
+        args.width, args.height, args.bpp, handle, pitch, size
+    );
+
+    Ok(())
+}
+
+/// 处理 DRM_IOCTL_MODE_MAP_DUMB ioctl
+fn handle_map_dumb(cmd: &ioctl_defs::MapDumb) -> Result<()> {
+    let mut args = cmd.read()?;
+
+    let manager = dumb::get_manager();
+    let offset = manager.get_offset(args.handle)?;
+
+    args.offset = offset as u64;
+    cmd.write(&args)?;
+
+    log::debug!("MAP_DUMB: handle={}, offset={:#x}", args.handle, offset);
+
+    Ok(())
+}
+
+/// 处理 DRM_IOCTL_MODE_DESTROY_DUMB ioctl
+fn handle_destroy_dumb(cmd: &ioctl_defs::DestroyDumb) -> Result<()> {
+    let args = cmd.read()?;
+
+    let manager = dumb::get_manager();
+    manager.destroy_dumb(args.handle)?;
+
+    log::debug!("DESTROY_DUMB: handle={}", args.handle);
+
+    Ok(())
 }

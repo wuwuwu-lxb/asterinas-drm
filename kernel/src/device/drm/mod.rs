@@ -2,7 +2,9 @@
 
 //! DRM 字符设备实现。
 
+mod dumb;
 mod file;
+mod gem;
 mod init;
 mod ioctl_defs;
 mod kms;
@@ -14,6 +16,7 @@ use crate::prelude::*;
 use super::{Device, DeviceType};
 use crate::fs::file::FileIo;
 
+pub(crate) use dumb::get_manager;
 pub(crate) use file::DrmFileHandle;
 pub(crate) use init::init_in_first_kthread;
 
