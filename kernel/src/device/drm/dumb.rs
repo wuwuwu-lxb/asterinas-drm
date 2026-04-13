@@ -9,7 +9,7 @@ use spin::Once;
 
 use crate::{
     prelude::*,
-    vm::vmo::{Vmo, VmoFlags, VmoOptions},
+    vm::vmo::{CommitFlags, Vmo, VmoFlags, VmoOptions},
 };
 
 /// 全局 DumbBufferManager 实例
@@ -189,17 +189,18 @@ impl DumbBufferManager {
             );
         }
 
-        let mut buffers = self.buffers.lock();
-        let mut id_alloc = self.id_alloc.lock();
-
-        let id = id_alloc.allocate();
-
-        let mut buffer = DumbBuffer::new(width, height, bpp);
-        buffer.id = id;
+        let id = {
+            let mut id_alloc = self.id_alloc.lock();
+            id_alloc.allocate()
+        };
 
         // 计算在 VMO 中的偏移
         let vmo_offset = (id as usize - 1) * DUMB_BUFFER_SLOT_SIZE;
 
+        let mut buffer = DumbBuffer::new(width, height, bpp);
+        buffer.id = id;
+
+        let mut buffers = self.buffers.lock();
         buffers.push(buffer);
 
         // 返回 handle（等同于 id）、pitch 和 offset

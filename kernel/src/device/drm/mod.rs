@@ -3,6 +3,7 @@
 //! DRM 字符设备实现。
 
 mod dumb;
+mod fb;
 mod file;
 mod gem;
 mod init;
@@ -17,6 +18,7 @@ use super::{Device, DeviceType};
 use crate::fs::file::FileIo;
 
 pub(crate) use dumb::get_manager;
+pub(crate) use fb::get_manager as fb_get_manager;
 pub(crate) use file::DrmFileHandle;
 pub(crate) use init::init_in_first_kthread;
 

@@ -13,7 +13,7 @@ use crate::{
     util::ioctl::{RawIoctl, dispatch_ioctl},
 };
 
-use super::{dumb, ioctl_defs, kms};
+use super::{dumb, fb, ioctl_defs, kms};
 
 /// DRM 文件句柄
 ///
@@ -72,36 +72,68 @@ impl FileIo for DrmFileHandle {
         use ioctl_defs::*;
 
         dispatch_ioctl!(match raw_ioctl {
-            // DRM_IOCTL_VERSION (0x6400) — 返回驱动版本
+            // DRM 核心 ioctl
             cmd @ GetVersion => {
                 kms::handle_version(&cmd)?;
                 Ok(0)
             }
-            // DRM_IOCTL_GET_CAP (0x6409) — 返回设备能力
             cmd @ GetCap => {
                 kms::handle_get_cap(&cmd)?;
                 Ok(0)
             }
-            // DRM_IOCTL_MODE_GETRESOURCES (0x40C0) — 返回 KMS 对象信息
+
+            // KMS 资源查询
             cmd @ GetResources => {
                 kms::handle_get_resources(&cmd)?;
                 Ok(0)
             }
-            // DRM_IOCTL_MODE_CREATE_DUMB (0x42c02) — 创建 Dumb Buffer
+            cmd @ GetConnector => {
+                kms::handle_get_connector(&cmd)?;
+                Ok(0)
+            }
+            cmd @ GetEncoder => {
+                kms::handle_get_encoder(&cmd)?;
+                Ok(0)
+            }
+            cmd @ GetCrtc => {
+                kms::handle_get_crtc(&cmd)?;
+                Ok(0)
+            }
+
+            // KMS 显示设置
+            cmd @ SetCrtc => {
+                kms::handle_set_crtc(&cmd)?;
+                Ok(0)
+            }
+
+            // Dumb Buffer 管理
             cmd @ CreateDumb => {
                 handle_create_dumb(&cmd)?;
                 Ok(0)
             }
-            // DRM_IOCTL_MODE_MAP_DUMB (0x42c03) — 获取 Dumb Buffer 映射偏移
             cmd @ MapDumb => {
                 handle_map_dumb(&cmd)?;
                 Ok(0)
             }
-            // DRM_IOCTL_MODE_DESTROY_DUMB (0x42c04) — 销毁 Dumb Buffer
             cmd @ DestroyDumb => {
                 handle_destroy_dumb(&cmd)?;
                 Ok(0)
             }
+
+            // Framebuffer 管理
+            cmd @ AddFb => {
+                fb::handle_add_fb(&cmd)?;
+                Ok(0)
+            }
+            cmd @ RmFb => {
+                fb::handle_rm_fb(&cmd)?;
+                Ok(0)
+            }
+            cmd @ GetFb => {
+                fb::handle_get_fb(&cmd)?;
+                Ok(0)
+            }
+
             _ => {
                 log::debug!(
                     "unknown DRM ioctl: {:#x}",
@@ -144,7 +176,7 @@ fn handle_map_dumb(cmd: &ioctl_defs::MapDumb) -> Result<()> {
     args.offset = offset as u64;
     cmd.write(&args)?;
 
-    log::debug!("MAP_DUMB: handle={}, offset={:#x}", args.handle, offset);
+    log::info!("MAP_DUMB: handle={}, offset={:#x}", args.handle, offset);
 
     Ok(())
 }

@@ -41,10 +41,9 @@ pub(super) type GetVersion = ioc!(Version, 0x64, 0x00, OutData<DrmVersion>);
 /// ```
 pub(super) type GetCap = ioc!(GetCap, 0x64, 0x09, InOutData<DrmGetCap>);
 
-/// DRM_IOCTL_MODE_GETRESOURCES (0x40C0)
+/// DRM_IOCTL_MODE_GETRESOURCES (0x42C0)
 ///
 /// 查询 KMS 资源（CRTC、Encoder、Connector、Framebuffer）数量和分辨率范围。
-/// 注意：这是模式相关 ioctl，使用 magic = 0x40 + 2 = 0x42。
 ///
 /// Linux 定义：
 /// ```c
@@ -55,7 +54,95 @@ pub(super) type GetResources = ioc!(
     GetResources,
     0x42,
     0xC0,
-    OutData<DrmModeCardRes>
+    InOutData<DrmModeCardRes>
+);
+
+/// DRM_IOCTL_MODE_GETENCODER (0x42C5)
+///
+/// 获取 Encoder 信息。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_GETENCODER \
+///     _IOC(_IOC_READ, 0x40 + 2, 0x05, sizeof(struct drm_mode_get_encoder))
+/// ```
+pub(super) type GetEncoder = ioc!(
+    GetEncoder,
+    0x42,
+    0xC5,
+    InOutData<DrmModeGetEncoder>
+);
+
+/// DRM_IOCTL_MODE_GETCONNECTOR (0x42C6)
+///
+/// 获取 Connector 信息。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_GETCONNECTOR \
+///     _IOC(_IOC_READ, 0x40 + 2, 0x06, sizeof(struct drm_mode_get_connector))
+/// ```
+pub(super) type GetConnector = ioc!(
+    GetConnector,
+    0x42,
+    0xC6,
+    InOutData<DrmModeGetConnector>
+);
+
+/// DRM_IOCTL_MODE_GETCRTC (0x42C1)
+///
+/// 获取 CRTC 信息。
+///
+/// Linux 定义：
+/// ```c
+/// #define DRM_IOCTL_MODE_GETCRTC \
+///     _IOC(_IOC_READ, 0x40 + 2, 0x01, sizeof(struct drm_mode_crtc))
+/// ```
+pub(super) type GetCrtc = ioc!(
+    GetCrtc,
+    0x42,
+    0xC1,
+    InOutData<DrmModeCrtc>
+);
+
+/// DRM_IOCTL_MODE_SETCRTC (0x42C0)
+///
+/// 设置 CRTC 配置。
+pub(super) type SetCrtc = ioc!(
+    SetCrtc,
+    0x42,
+    0xC0,
+    InOutData<DrmModeCrtc>
+);
+
+/// DRM_IOCTL_MODE_ADDFB (0x42C8)
+///
+/// 创建 Framebuffer。
+pub(super) type AddFb = ioc!(
+    AddFb,
+    0x42,
+    0xC8,
+    InOutData<DrmModeFbCmd>
+);
+
+/// DRM_IOCTL_MODE_RMFB (0x42C9)
+///
+/// 删除 Framebuffer。
+pub(super) type RmFb = ioc!(
+    RmFb,
+    0x42,
+    0xC9,
+    InOutData<DrmModeRmFb>
+);
+
+/// DRM_IOCTL_MODE_GETFB (0x42CA)
+///
+/// 获取 Framebuffer 信息。
+pub(super) type GetFb = ioc!(
+    GetFb,
+    0x42,
+    0xCA,
+    InOutData<DrmModeGetFb>
 );
 
 // ============================================================================
@@ -244,3 +331,279 @@ pub struct DrmModeCardRes {
     /// 支持的最大高度（像素）
     pub max_height: u32,
 }
+
+// ============================================================================
+// KMS 数据结构
+// ============================================================================
+
+/// DRM 显示模式结构体 — `struct drm_mode_modeinfo` in Linux
+///
+/// 描述一个显示模式（分辨率、刷新率等）。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeModeInfo {
+    /// 像素时钟（kHz）
+    pub clock: u32,
+    /// 水平显示
+    pub hdisplay: u16,
+    /// 水平同步开始
+    pub hsync_start: u16,
+    /// 水平同步结束
+    pub hsync_end: u16,
+    /// 水平总像素
+    pub htotal: u16,
+    /// 水平偏斜
+    pub hskew: u16,
+    /// 垂直显示
+    pub vdisplay: u16,
+    /// 垂直同步开始
+    pub vsync_start: u16,
+    /// 垂直同步结束
+    pub vsync_end: u16,
+    /// 垂直总行
+    pub vtotal: u16,
+    /// 垂直扫描
+    pub vscan: u16,
+    /// 垂直刷新率（Hz）
+    pub vrefresh: u32,
+    /// 标志位
+    pub flags: u32,
+    /// 模式名称
+    pub name: [u8; 32],
+}
+
+impl DrmModeModeInfo {
+    pub const fn new(width: u16, height: u16, refresh: u32) -> Self {
+        let clock = (width as u32 * height as u32 * refresh as u32 / 1000) as u32;
+        Self {
+            clock,
+            hdisplay: width,
+            hsync_start: width + 48,
+            hsync_end: width + 88,
+            htotal: width + 168,
+            hskew: 0,
+            vdisplay: height,
+            vsync_start: height + 3,
+            vsync_end: height + 6,
+            vtotal: height + 29,
+            vscan: 0,
+            vrefresh: refresh,
+            flags: 0x20,
+            name: *b"1024x768\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+        }
+    }
+}
+
+/// DRM Encoder 信息结构体 — `struct drm_mode_get_encoder` in Linux
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeGetEncoder {
+    /// Encoder ID
+    pub encoder_id: u32,
+    /// Encoder 类型（DRM_MODE_ENCODER_*）
+    pub encoder_type: u32,
+    /// 当前关联的 CRTC ID
+    pub crtc_id: u32,
+    /// 可能连接的 CRTC 位掩码
+    pub possible_crtcs: u32,
+    /// 可能克隆的 Encoder 位掩码
+    pub possible_clones: u32,
+}
+
+/// DRM Encoder 类型常量
+impl DrmModeGetEncoder {
+    pub const DRM_MODE_ENCODER_DAC: u32 = 0;
+    pub const DRM_MODE_ENCODER_TVDAC: u32 = 1;
+    pub const DRM_MODE_ENCODER_LVDS: u32 = 2;
+    pub const DRM_MODE_ENCODER_TMDS: u32 = 3;
+    pub const DRM_MODE_ENCODER_VIRTUAL: u32 = 4;
+    pub const DRM_MODE_ENCODER_DPI: u32 = 5;
+}
+
+/// DRM Connector 信息结构体 — `struct drm_mode_get_connector` in Linux
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeGetConnector {
+    /// Connector ID
+    pub connector_id: u64,
+    /// Encoder ID 数组指针
+    pub encoders_ptr: u64,
+    /// Mode 数组指针
+    pub modes_ptr: u64,
+    /// Property 数组指针
+    pub props_ptr: u64,
+    /// Property values 数组指针
+    pub prop_values_ptr: u64,
+    /// Connector ID (u32 version)
+    pub connector_id_val: u32,
+    /// 当前关联的 Encoder ID
+    pub encoder_id: u32,
+    /// 连接状态（0=断开, 1=连接, 2=未知）
+    pub connection: u32,
+    /// Connector 类型（DRM_MODE_CONNECTOR_*）
+    pub connector_type: u32,
+    /// Connector 类型 ID
+    pub connector_type_id: u32,
+    /// 支持的模式数量
+    pub count_modes: u32,
+    /// 属性数量
+    pub count_props: u32,
+    /// 可用 Encoder 数量
+    pub count_encoders: u32,
+}
+
+/// DRM Connector 类型常量
+impl DrmModeGetConnector {
+    pub const DRM_MODE_CONNECTOR_Unknown: u32 = 0;
+    pub const DRM_MODE_CONNECTOR_VGA: u32 = 1;
+    pub const DRM_MODE_CONNECTOR_DVII: u32 = 2;
+    pub const DRM_MODE_CONNECTOR_DVID: u32 = 3;
+    pub const DRM_MODE_CONNECTOR_DVIA: u32 = 4;
+    pub const DRM_MODE_CONNECTOR_Composite: u32 = 5;
+    pub const DRM_MODE_CONNECTOR_SVIDEO: u32 = 6;
+    pub const DRM_MODE_CONNECTOR_LVDS: u32 = 7;
+    pub const DRM_MODE_CONNECTOR_Component: u32 = 8;
+    pub const DRM_MODE_CONNECTOR_9PinDIN: u32 = 9;
+    pub const DRM_MODE_CONNECTOR_DisplayPort: u32 = 10;
+    pub const DRM_MODE_CONNECTOR_HDMIA: u32 = 11;
+    pub const DRM_MODE_CONNECTOR_HDMIB: u32 = 12;
+    pub const DRM_MODE_CONNECTOR_TV: u32 = 13;
+    pub const DRM_MODE_CONNECTOR_E_DP: u32 = 14;
+    pub const DRM_MODE_CONNECTOR_VIRTUAL: u32 = 15;
+}
+
+/// DRM Connector 连接状态
+impl DrmModeGetConnector {
+    pub const DRM_MODE_CONNECTED: u32 = 1;
+    pub const DRM_MODE_DISCONNECTED: u32 = 2;
+    pub const DRM_MODE_UNKNOWNCONNECTION: u32 = 3;
+}
+
+/// DRM CRTC 信息结构体 — `struct drm_mode_crtc` in Linux
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeCrtc {
+    /// CRTC ID
+    pub crtc_id: u32,
+    /// 关联的 Framebuffer ID
+    pub fb_id: u32,
+    /// 显示区域 X 偏移
+    pub x: u32,
+    /// 显示区域 Y 偏移
+    pub y: u32,
+    /// mode 是否有效
+    pub mode_valid: u32,
+    /// 显示模式
+    pub mode: DrmModeModeInfo,
+    /// 模式数量
+    pub count_modes: u32,
+    /// X1
+    pub x1: u32,
+    /// Y1
+    pub y1: u32,
+    /// gamma size
+    pub gamma_size: u32,
+}
+
+/// DRM Framebuffer 创建结构体 — `struct drm_mode_fb_cmd2` in Linux
+///
+/// 用于 ADDFB2 ioctl（支持更多参数）。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeFbCmd2 {
+    /// Framebuffer ID（输出）
+    pub fb_id: u32,
+    /// 宽度
+    pub width: u32,
+    /// 高度
+    pub height: u32,
+    /// 每像素位数
+    pub bpp: u32,
+    /// 标志
+    pub flags: u32,
+    /// 像素格式
+    pub pixel_format: u32,
+    /// 缓冲区句柄
+    pub handles: [u32; 4],
+    /// 偏移
+    pub pitches: [u32; 4],
+    /// 起始偏移
+    pub offsets: [u64; 4],
+    /// 修饰符
+    pub modifier: [u64; 4],
+}
+
+/// DRM Framebuffer 简单创建结构体 — `struct drm_mode_fb_cmd` in Linux
+///
+/// 用于 ADDFB ioctl（简化版本）。
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeFbCmd {
+    /// Framebuffer ID（输出）
+    pub fb_id: u32,
+    /// 宽度
+    pub width: u32,
+    /// 高度
+    pub height: u32,
+    /// 格式
+    pub format: u32,
+    /// pitch
+    pub pitch: u32,
+    /// Buffer 句柄
+    pub handle: u32,
+    /// 深度
+    pub depth: u32,
+    /// bpp
+    pub bpp: u32,
+    /// 偏移
+    pub offset: u64,
+    /// 大小
+    pub size: u64,
+}
+
+/// DRM RMFB 结构体 — `struct drm_mode_fb` in Linux
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeRmFb {
+    /// 要删除的 Framebuffer ID
+    pub fb_id: u32,
+}
+
+/// DRM GETFB 结构体 — `struct drm_mode_fb` in Linux
+///
+/// Linux 参考：include/uapi/drm/drm_mode.h
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, Pod)]
+pub struct DrmModeGetFb {
+    /// Framebuffer ID
+    pub fb_id: u32,
+    /// 宽度
+    pub width: u32,
+    /// 高度
+    pub height: u32,
+    /// 每像素位数
+    pub bpp: u32,
+    /// 扫描线宽度
+    pub pitch: u32,
+    /// Buffer 句柄
+    pub handle: u32,
+    /// 缓冲区偏移
+    pub offset: u64,
+}
+
+/// Framebuffer ID 起始值
+pub const FB_ID_START: u32 = 1;

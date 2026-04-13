@@ -4,7 +4,7 @@
 
 use alloc::sync::Arc;
 
-use super::{dumb, Drm};
+use super::{dumb, fb, Drm};
 use crate::device::registry::char;
 
 /// 在第一个内核线程中初始化 DRM 字符设备
@@ -18,6 +18,10 @@ pub(crate) fn init_in_first_kthread() {
     } else {
         log::info!("DumbBuffer manager initialized");
     }
+
+    // 初始化 Framebuffer 管理器
+    fb::init();
+    log::info!("Framebuffer manager initialized");
 
     // 注册 /dev/dri/card0
     if let Err(e) = char::register(Arc::new(Drm)) {

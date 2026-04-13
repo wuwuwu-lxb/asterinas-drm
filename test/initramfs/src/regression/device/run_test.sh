@@ -13,3 +13,4 @@ set -e
 ./framebuffer
 ./full
 ./random
+./modeset-double-buffered
