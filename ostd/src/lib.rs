@@ -33,7 +33,7 @@ mod error;
 mod ex_table;
 pub mod io;
 pub mod irq;
-pub mod logger;
+pub mod log;
 pub mod mm;
 pub mod panic;
 pub mod power;
@@ -84,7 +84,7 @@ unsafe fn init() {
     #[cfg(not(target_arch = "x86_64"))]
     arch::serial::init();
 
-    logger::init();
+    log::init();
 
     // SAFETY:
     //  1. They are only called once in the boot context of the BSP.
@@ -163,8 +163,8 @@ mod feature_validation {
 mod test {
     use crate::prelude::*;
 
-    #[ktest]
     #[expect(clippy::eq_op)]
+    #[ktest]
     fn trivial_assertion() {
         assert_eq!(0, 0);
     }

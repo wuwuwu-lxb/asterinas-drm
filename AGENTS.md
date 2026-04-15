@@ -90,8 +90,8 @@ Below is a condensed summary of the most important rules.
   Always use `workspace.dependencies`.
 - **Error handling:** Propagate errors with `?`.
   Do not `.unwrap()` where failure is possible.
-- **Logging:** Use `log` crate macros only (`trace!`..`error!`).
-  No `println!` in production code.
+- **Logging:** Use OSTD logging macros only (`debug!`..`emerg!`).
+  Import via `use ostd::prelude::*`. No `println!` in production code.
 - **Concurrency:** Establish and document lock order.
   Never do I/O or blocking under a spinlock.
   Avoid casual use of atomics.
@@ -101,6 +101,8 @@ Below is a condensed summary of the most important rules.
 - **Macros and attributes:** Prefer functions over macros.
   Suppress lints at the narrowest scope.
   Prefer `#[expect(...)]` over `#[allow(...)]`.
+  Sort non-derive outer attributes alphabetically;
+  place `#[derive(...)]` last with traits sorted alphabetically.
 - **Doc comments:** First line uses third-person singular present
   ("Returns", "Creates"). End sentence comments with punctuation.
   Wrap identifiers in backticks.

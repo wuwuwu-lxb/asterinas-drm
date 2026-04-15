@@ -21,7 +21,7 @@ use device::{
     input::device::InputDevice, network::device::NetworkDevice, socket::device::SocketDevice,
     gpu::device::GpuDevice,
 };
-use log::{error, warn};
+use ostd::{error, warn};
 use spin::Once;
 use transport::{DeviceStatus, mmio::VIRTIO_MMIO_DRIVER, pci::VIRTIO_PCI_DRIVER};
 

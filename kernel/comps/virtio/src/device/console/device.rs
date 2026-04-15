@@ -5,9 +5,9 @@ use core::hint::spin_loop;
 
 use aster_console::{AnyConsoleDevice, ConsoleCallback};
 use aster_util::mem_obj_slice::Slice;
-use log::debug;
 use ostd::{
     arch::trap::TrapFrame,
+    debug,
     mm::{VmReader, dma::DmaStream, io::util::HasVmReaderWriter},
     sync::{Rcu, SpinLock},
 };
@@ -41,7 +41,7 @@ impl AnyConsoleDevice for ConsoleDevice {
             self.send_buffer.sync_to_device(0..len).unwrap();
 
             let slice = Slice::new(&self.send_buffer, 0..len);
-            transmit_queue.add_dma_buf(&[&slice], &[]).unwrap();
+            transmit_queue.add_input_bufs(&[&slice]).unwrap();
 
             if transmit_queue.should_notify() {
                 transmit_queue.notify();
@@ -163,7 +163,7 @@ impl ConsoleDevice {
             //
             // For the QEMU bug, see details at
             // <https://lore.kernel.org/qemu-devel/20240707111940.232549-3-lrh2000@pku.edu.cn/T/#u>.
-            .add_dma_buf(&[], &[&Slice::new(&self.receive_buffer, 0..1)])
+            .add_output_bufs(&[&Slice::new(&self.receive_buffer, 0..1)])
             .unwrap();
 
         if receive_queue.should_notify() {

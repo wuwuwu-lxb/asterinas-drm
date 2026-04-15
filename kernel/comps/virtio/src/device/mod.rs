@@ -11,8 +11,8 @@ pub mod network;
 pub mod socket;
 pub mod gpu;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromInt)]
 #[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, TryFromInt)]
 pub(crate) enum VirtioDeviceType {
     Invalid = 0,
     Network = 1,

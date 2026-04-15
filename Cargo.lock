@@ -101,7 +101,6 @@ dependencies = [
  "device-id",
  "id-alloc",
  "int-to-c-enum",
- "log",
  "ostd",
  "ostd-pod",
  "spin",
@@ -114,7 +113,6 @@ version = "0.1.0"
 dependencies = [
  "component",
  "inventory",
- "log",
  "ostd",
  "spin",
 ]
@@ -149,7 +147,6 @@ dependencies = [
  "aster-console",
  "aster-input",
  "component",
- "log",
  "ostd",
  "spin",
 ]
@@ -162,7 +159,6 @@ dependencies = [
  "aster-input",
  "bitflags 2.9.1",
  "component",
- "log",
  "ostd",
  "spin",
 ]
@@ -174,7 +170,6 @@ dependencies = [
  "bitflags 1.3.2",
  "bitvec",
  "component",
- "log",
  "ostd",
  "ostd-pod",
  "spin",
@@ -225,7 +220,6 @@ dependencies = [
  "keyable-arc",
  "lending-iterator",
  "libflate",
- "log",
  "logo-ascii-art",
  "loongArch64",
  "lru",
@@ -253,7 +247,6 @@ version = "0.1.0"
 dependencies = [
  "aster-console",
  "component",
- "log",
  "ostd",
  "owo-colors",
 ]
@@ -271,7 +264,6 @@ dependencies = [
  "hashbrown 0.14.5",
  "inherit-methods-macro",
  "lending-iterator",
- "log",
  "lru",
  "ostd",
  "ostd-pod",
@@ -303,7 +295,6 @@ dependencies = [
  "cfg-if",
  "component",
  "fdt",
- "log",
  "ostd",
  "spin",
 ]
@@ -358,7 +349,6 @@ dependencies = [
  "bitflags 1.3.2",
  "chrono",
  "component",
- "log",
  "ostd",
  "spin",
 ]
@@ -371,7 +361,6 @@ dependencies = [
  "component",
  "fdt",
  "inherit-methods-macro",
- "log",
  "ostd",
  "spin",
 ]
@@ -409,7 +398,6 @@ dependencies = [
  "device-id",
  "id-alloc",
  "int-to-c-enum",
- "log",
  "ostd",
  "ostd-pod",
  "spin",
@@ -1315,7 +1303,6 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 name = "osdk-frame-allocator"
 version = "0.17.1"
 dependencies = [
- "log",
  "ostd",
  "paste",
 ]

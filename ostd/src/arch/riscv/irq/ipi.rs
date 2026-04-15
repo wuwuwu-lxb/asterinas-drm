@@ -7,7 +7,7 @@ use spin::Once;
 use crate::{cpu::PinCurrentCpu, irq::IrqLine};
 
 /// Hardware-specific, architecture-dependent CPU ID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct HwCpuId(u32);
 
 impl HwCpuId {
@@ -61,9 +61,9 @@ pub(crate) fn send_ipi(hw_cpu_id: HwCpuId, _guard: &dyn PinCurrentCpu) {
     let ret = sbi_rt::send_ipi(sbi_rt::HartMask::from_mask_base(hart_mask, hart_mask_base));
 
     if ret.error == 0 {
-        log::debug!("Successfully sent IPI to hart {}", hw_cpu_id.0);
+        crate::debug!("Successfully sent IPI to hart {}", hw_cpu_id.0);
     } else {
-        log::error!(
+        crate::error!(
             "Failed to send IPI to hart {}: error code {}",
             hw_cpu_id.0,
             ret.error

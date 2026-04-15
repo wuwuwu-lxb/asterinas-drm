@@ -8,6 +8,7 @@ set -e
 
 ./clone3/clone_exit_signal
 ./clone3/clone_files
+./clone3/clone_invalid_exit_signal
 ./clone3/clone_no_exit_signal
 ./clone3/clone_parent
 ./clone3/clone_process
@@ -32,6 +33,7 @@ set -e
 ./itimer/setitimer
 ./itimer/timer_create
 
+./prctl/capbset
 ./prctl/secure_bits
 ./prctl/subreaper
 
@@ -50,6 +52,7 @@ set -e
 
 if [ "$(uname -m)" = "x86_64" ]; then
     ./signal/sigaltstack
+    ./signal/sigtrap
     ./signal/signal_fpu
     ./signal/signal_rflags_df
     ./signal/signal_test

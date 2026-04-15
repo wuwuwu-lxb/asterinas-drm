@@ -20,9 +20,9 @@ use aster_block::{
 };
 use aster_util::mem_obj_slice::Slice;
 use device_id::{DeviceId, MinorId};
-use log::{debug, info};
 use ostd::{
     arch::trap::TrapFrame,
+    debug, info,
     mm::{HasSize, VmIo, dma::DmaStream},
     sync::SpinLock,
 };
@@ -227,7 +227,7 @@ impl DeviceInner {
             // block devices. When SMP is enabled on x86, the feature is on.
             // We should also consider negotiating the feature in the future.
             // return Err(VirtioDeviceError::QueuesAmountDoNotMatch(num_queues, 1));
-            log::warn!(
+            ostd::warn!(
                 "Not supporting Multi-Queue Block IO Queueing Mechanism, only using the first queue"
             );
         }
@@ -379,7 +379,7 @@ impl DeviceInner {
                 continue;
             }
             let token = queue
-                .add_dma_buf(&[&req_slice], outputs.as_slice())
+                .add_dma_bufs(&[&req_slice], outputs.as_slice())
                 .expect("add queue failed");
             if queue.should_notify() {
                 queue.notify();
@@ -446,7 +446,7 @@ impl DeviceInner {
                 continue;
             }
             let token = queue
-                .add_dma_buf(inputs.as_slice(), &[&resp_slice])
+                .add_dma_bufs(inputs.as_slice(), &[&resp_slice])
                 .expect("add queue failed");
             if queue.should_notify() {
                 queue.notify();
@@ -500,7 +500,7 @@ impl DeviceInner {
                 continue;
             }
             let token = queue
-                .add_dma_buf(&[&req_slice], &[&resp_slice])
+                .add_dma_bufs(&[&req_slice], &[&resp_slice])
                 .expect("add queue failed");
             if queue.should_notify() {
                 queue.notify();
@@ -532,7 +532,7 @@ impl SubmittedRequest {
 
 /// VirtIOBlock request.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Pod)]
+#[derive(Clone, Copy, Debug, Pod)]
 struct BlockReq {
     pub type_: u32,
     pub reserved: u32,
@@ -543,7 +543,7 @@ const REQ_SIZE: usize = size_of::<BlockReq>();
 
 /// Response of a VirtIOBlock request.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Pod)]
+#[derive(Clone, Copy, Debug, Pod)]
 struct BlockResp {
     pub status: u8,
 }

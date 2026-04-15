@@ -45,7 +45,7 @@ pub(super) fn init(controller: &mut I8042Controller) -> Result<(), I8042Controll
 
     // Determine the keyboard's type.
     let (device_id, _) = init_ctx.get_device_id()?;
-    log::info!("PS/2 keyboard device ID: 0x{:02X}", device_id);
+    ostd::info!("PS/2 keyboard device ID: 0x{:02X}", device_id);
     if device_id != DEVICE_ID_REGULAR_KEYBOARD {
         // TODO: Support other kinds of keyboards.
         return Err(I8042ControllerError::DeviceUnknown);
@@ -180,7 +180,7 @@ fn handle_keyboard_input(_trap_frame: &TrapFrame) {
             registered_device.submit_events(&events);
         }
     } else {
-        log::debug!(
+        ostd::debug!(
             "PS/2 keyboard unmapped scancode {:?} dropped",
             scancode_event.scancode
         );
@@ -190,7 +190,7 @@ fn handle_keyboard_input(_trap_frame: &TrapFrame) {
 /// A scan code in the Scan Code Set 1.
 ///
 /// Reference: <https://wiki.osdev.org/PS/2_Keyboard#Scan_Code_Set_1>.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ScanCode(u8);
 
 impl ScanCode {
@@ -221,7 +221,7 @@ impl ScanCode {
 }
 
 /// Scancode value and relevant modifier states.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct ScancodeInfo {
     scancode: ScanCode,
     key_status: KeyStatus,
@@ -234,13 +234,13 @@ impl ScancodeInfo {
         static EXTENDED_KEY: AtomicBool = AtomicBool::new(false);
 
         let Some(data) = I8042_CONTROLLER.get()?.lock().receive_data() else {
-            log::warn!("PS/2 keyboard has no input data");
+            ostd::warn!("PS/2 keyboard has no input data");
             return None;
         };
 
         let code = ScanCode(data);
         if code.has_error() {
-            log::warn!("PS/2 keyboard key detection error or internal buffer overrun");
+            ostd::warn!("PS/2 keyboard key detection error or internal buffer overrun");
             return None;
         }
 

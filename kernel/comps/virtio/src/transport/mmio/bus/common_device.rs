@@ -3,9 +3,8 @@
 //! MMIO device common definitions or functions.
 
 use int_to_c_enum::TryFromInt;
-use log::info;
 use ostd::{
-    Error, Result,
+    Error, Result, info,
     io::IoMem,
     irq::IrqLine,
     mm::{HasPaddr, VmIoOnce},
@@ -58,8 +57,8 @@ impl MmioCommonDevice {
 }
 
 /// Virtio MMIO version.
-#[derive(Debug, Clone, Copy, TryFromInt, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, TryFromInt)]
 pub enum VirtioMmioVersion {
     /// Legacy
     Legacy = 1,

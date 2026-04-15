@@ -18,6 +18,9 @@ use alloc::{
 
 pub use component_macro::*;
 pub use inventory::submit;
+// This crate intentionally uses the `log` crate directly (not `ostd::log`)
+// because it is a standalone framework crate that does not depend on OSTD.
+// Messages are forwarded to the OSTD logger via the `LogCrateBridge`.
 use log::{debug, error, info};
 
 /// The initialization stages of the component system.
@@ -33,7 +36,7 @@ use log::{debug, error, info};
 /// - `Process`: The process stage, initialized after the first user process
 ///   is created. This stage runs in the context of the first user process,
 ///   and prepares the system for user-space execution.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum InitStage {
     Bootstrap,
     Kthread,

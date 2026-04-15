@@ -4,13 +4,13 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, ptr::NonNull};
 
 use bitflags::bitflags;
-use log::{error, info};
 use spin::Once;
 use volatile::{VolatileRef, access::ReadWrite};
 
 use super::registers::Capability;
 use crate::{
     arch::trap::TrapFrame,
+    error, info,
     irq::IrqLine,
     sync::{LocalIrqDisabled, SpinLock},
 };
@@ -196,8 +196,8 @@ impl Debug for FaultRecording {
     }
 }
 
-#[derive(Debug)]
 #[repr(u8)]
+#[derive(Debug)]
 pub enum FaultRequestType {
     Write = 0,
     Page = 1,
@@ -205,9 +205,9 @@ pub enum FaultRequestType {
     AtomicOp = 3,
 }
 
-#[derive(Debug)]
-#[repr(u8)]
 #[expect(clippy::enum_variant_names)]
+#[repr(u8)]
+#[derive(Debug)]
 pub enum FaultAddressType {
     UntranslatedRequest = 0,
     TranslationRequest = 1,

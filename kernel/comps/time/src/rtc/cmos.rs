@@ -15,8 +15,7 @@
 
 use core::num::NonZeroU8;
 
-use log::warn;
-use ostd::{arch::{device::io_port::{ReadWriteAccess, WriteOnlyAccess}, kernel::ACPI_INFO}, io::IoPort, sync::SpinLock};
+use ostd::{arch::{device::io_port::{ReadWriteAccess, WriteOnlyAccess}, kernel::ACPI_INFO}, io::IoPort, sync::SpinLock, warn};
 
 use crate::SystemTime;
 use super::Driver;
@@ -164,7 +163,7 @@ impl CmosAccess {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct CmosData {
     century: Option<NonZeroU8>,
     year: u16,

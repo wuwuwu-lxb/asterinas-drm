@@ -79,8 +79,8 @@ pub(crate) struct Cursor<'rcu, C: PageTableConfig> {
 const MAX_NR_LEVELS: usize = 4;
 
 /// A fragment of a page table that can be taken out of the page table.
-#[derive(Debug)]
 #[must_use]
+#[derive(Debug)]
 pub(crate) enum PageTableFrag<C: PageTableConfig> {
     /// A mapped page table item.
     Mapped { va: Vaddr, item: RcuDrop<C::Item> },
@@ -271,7 +271,8 @@ impl<'rcu, C: PageTableConfig> Cursor<'rcu, C> {
             let node_size = page_size::<C>(self.level + 1);
             let node_start = self.va.align_down(node_size);
             // If the address is within the current node, we can jump directly.
-            if node_start <= va && va < node_start + node_size {
+            // Note that `node_start + node_size` may overflow.
+            if node_start <= va && va - node_start < node_size {
                 self.va = va;
                 return Ok(());
             }

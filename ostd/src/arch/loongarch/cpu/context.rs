@@ -18,9 +18,9 @@ use crate::{
 };
 
 /// General registers
-#[derive(Debug, Default, Clone, Copy)]
-#[repr(C)]
 #[expect(missing_docs)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct GeneralRegs {
     pub zero: usize,
     pub ra: usize,
@@ -59,8 +59,8 @@ pub struct GeneralRegs {
 /// CPU exception information.
 //
 // TODO: Refactor the struct into an enum (similar to x86's `CpuException`).
-#[derive(Clone, Copy, Debug)]
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct CpuExceptionInfo {
     /// The type of the exception.
     pub code: Exception,
@@ -88,8 +88,8 @@ impl CpuExceptionInfo {
 }
 
 /// Userspace CPU context, including general-purpose registers and exception information.
-#[derive(Clone, Debug)]
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct UserContext {
     user_context: RawUserContext,
     trap: Trap,
@@ -194,13 +194,13 @@ impl UserContextApiInternal for UserContext {
                             page_fault_addr: 0,
                             error_code: 0, // TODO: Set error code if needed
                         });
-                        log::debug!(
+                        crate::debug!(
                             "Exception {exception:?} occurred, badv: {badv:#x?}, badi: {badi:#x?}, era: {era:#x?}"
                         );
                         break ReturnReason::UserException;
                     }
                     Exception::FloatingPointUnavailable => {
-                        log::debug!(
+                        crate::debug!(
                             "Floating point unit is not available, badv: {badv:#x?}, badi: {badi:#x?}, era: {era:#x?}"
                         );
                         // TODO: Add FPU support and enable it when this exception occurs.
@@ -219,7 +219,7 @@ impl UserContextApiInternal for UserContext {
                     | Interrupt::HWI5
                     | Interrupt::HWI6
                     | Interrupt::HWI7 => {
-                        log::debug!("Handling hardware interrupt: {:?}", interrupt);
+                        crate::debug!("Handling hardware interrupt: {:?}", interrupt);
                         while let Some(irq_num) = crate::arch::irq::chip::claim() {
                             // Call the IRQ callback functions for the claimed interrupt
                             call_irq_callback_functions(

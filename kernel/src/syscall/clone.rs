@@ -35,7 +35,7 @@ pub fn sys_clone3(
     ctx: &Context,
     parent_context: &UserContext,
 ) -> Result<SyscallReturn> {
-    trace!(
+    debug!(
         "clone args addr = 0x{:x}, size = 0x{:x}",
         clong_args_addr, size
     );
@@ -45,18 +45,18 @@ pub fn sys_clone3(
 
     let clone_args = {
         let args: Clone3Args = ctx.user_space().read_val(clong_args_addr)?;
-        trace!("clone3 args = {:x?}", args);
+        debug!("clone3 args = {:x?}", args);
         CloneArgs::try_from(args)?
     };
     debug!("clone args = {:x?}", clone_args);
 
     let child_pid = clone_child(ctx, parent_context, clone_args)?;
-    trace!("child pid = {}", child_pid);
+    debug!("child pid = {}", child_pid);
     Ok(SyscallReturn::Return(child_pid as _))
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Pod)]
+#[derive(Clone, Copy, Debug, Pod)]
 struct Clone3Args {
     /// Flags bit mask
     flags: u64,
@@ -99,8 +99,15 @@ impl TryFrom<Clone3Args> for CloneArgs {
 
         let flags = CloneFlags::from_bits(value.flags as u32)
             .ok_or_else(|| Error::with_message(Errno::EINVAL, "invalid clone flags"))?;
-        let exit_signal =
-            (value.exit_signal != 0).then(|| SigNum::from_u8(value.exit_signal as u8));
+        let exit_signal = if value.exit_signal == 0 {
+            None
+        } else {
+            let exit_signal = u8::try_from(value.exit_signal)
+                .ok()
+                .and_then(|exit_signal| SigNum::try_from(exit_signal).ok())
+                .ok_or_else(|| Error::with_message(Errno::EINVAL, "invalid exit signal"))?;
+            Some(exit_signal)
+        };
         if flags.intersects(CloneFlags::CLONE_PARENT | CloneFlags::CLONE_THREAD)
             && exit_signal.is_some()
         {

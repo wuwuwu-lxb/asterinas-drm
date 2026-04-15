@@ -43,7 +43,7 @@ pub struct FrameBuffer {
 ///
 /// Linux framebuffer colormap uses 16-bit values (0-65535) for each color channel
 /// to support high precision color mapping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ColorMapEntry {
     /// Red color value (16-bit)
     pub red: u16,
@@ -56,7 +56,7 @@ pub struct ColorMapEntry {
 }
 
 /// Internal framebuffer colormap structure.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct FbCmap {
     /// Color map entries
     entries: Vec<ColorMapEntry>,
@@ -101,9 +101,11 @@ pub(crate) fn init() {
     log::info!("Framebuffer boot arg: {:?}", fb_arg);
 
     let Some(framebuffer_arg) = fb_arg else {
-        // No hardware framebuffer — use RAM fallback
-        log::info!("No hardware framebuffer, using RAM fallback {}x{}x32bpp",
-            DEFAULT_FB_WIDTH, DEFAULT_FB_HEIGHT);
+        log::info!(
+            "No hardware framebuffer, using RAM fallback {}x{}x32bpp",
+            DEFAULT_FB_WIDTH,
+            DEFAULT_FB_HEIGHT
+        );
         let ram_fb = RamFrameBuffer::new();
         let fb_ops: Arc<dyn FrameBufferOps + Send + Sync> = Arc::new(ram_fb);
         FRAMEBUFFER.call_once(|| fb_ops);
@@ -111,9 +113,12 @@ pub(crate) fn init() {
     };
 
     if framebuffer_arg.address == 0 {
-        log::error!("Framebuffer address is zero");
-        // Fallback to RAM
-        log::info!("Using RAM fallback {}x{}x32bpp", DEFAULT_FB_WIDTH, DEFAULT_FB_HEIGHT);
+        ostd::error!("Framebuffer address is zero");
+        log::info!(
+            "Using RAM fallback {}x{}x32bpp",
+            DEFAULT_FB_WIDTH,
+            DEFAULT_FB_HEIGHT
+        );
         let ram_fb = RamFrameBuffer::new();
         let fb_ops: Arc<dyn FrameBufferOps + Send + Sync> = Arc::new(ram_fb);
         FRAMEBUFFER.call_once(|| fb_ops);
@@ -128,12 +133,15 @@ pub(crate) fn init() {
         24 => PixelFormat::Rgb888,
         32 => PixelFormat::BgrReserved,
         _ => {
-            log::error!(
+            ostd::error!(
                 "Unsupported framebuffer pixel format: {} bpp",
                 framebuffer_arg.bpp
             );
-            // Fallback to RAM
-            log::info!("Using RAM fallback {}x{}x32bpp", DEFAULT_FB_WIDTH, DEFAULT_FB_HEIGHT);
+            log::info!(
+                "Using RAM fallback {}x{}x32bpp",
+                DEFAULT_FB_WIDTH,
+                DEFAULT_FB_HEIGHT
+            );
             let ram_fb = RamFrameBuffer::new();
             let fb_ops: Arc<dyn FrameBufferOps + Send + Sync> = Arc::new(ram_fb);
             FRAMEBUFFER.call_once(|| fb_ops);
@@ -482,7 +490,7 @@ impl FrameBufferOps for RamFrameBuffer {
 }
 
 /// The offset of a pixel in the framebuffer.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PixelOffset<'a> {
     fb: &'a FrameBuffer,
     offset: isize,

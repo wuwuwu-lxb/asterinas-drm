@@ -238,7 +238,7 @@ bitflags! {
 }
 
 /// BAR space in PCI common config space.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Bar {
     /// Memory BAR
     Memory(Arc<MemoryBar>),
@@ -399,7 +399,7 @@ impl MemoryBar {
         // the base address.
         #[cfg(not(target_arch = "loongarch64"))]
         if base == 0 {
-            log::info!(
+            ostd::info!(
                 "presumably uninitialized BAR {} (Memory {:?}, size={}) of PCI device {:?}",
                 index,
                 address_length,
@@ -423,7 +423,7 @@ impl MemoryBar {
 }
 
 /// The address length of a memory BAR (32 bits or 64 bits).
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AddrLen {
     /// 32 bits
     Bits32,
@@ -432,7 +432,7 @@ pub enum AddrLen {
 }
 
 /// I/O port BAR.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct IoBar {
     base: u32,
     size: u32,
@@ -501,7 +501,7 @@ impl IoBar {
         // BAR has not been initialized. In the future, we may need to add the ability to manually
         // allocate the base address.
         if base == 0 {
-            log::info!(
+            ostd::info!(
                 "presumably uninitialized BAR {} (I/O, size={}) of PCI device {:?}",
                 index,
                 size,

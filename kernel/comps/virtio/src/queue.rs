@@ -11,8 +11,10 @@ use core::{
 use aster_rights::{Dup, TRightSet, TRights, Write};
 use aster_util::{field_ptr, safe_ptr::SafePtr};
 use bitflags::bitflags;
-use log::debug;
-use ostd::mm::{HasPaddr, PodOnce, Split, dma::DmaCoherent};
+use ostd::{
+    debug,
+    mm::{HasPaddr, PodOnce, Split, dma::DmaCoherent},
+};
 
 use crate::{
     dma_buf::DmaBuf,
@@ -158,10 +160,10 @@ impl VirtQueue {
     /// Add dma buffers to the virtqueue, return a token.
     ///
     /// Ref: linux virtio_ring.c virtqueue_add
-    pub fn add_dma_buf<T: DmaBuf>(
+    pub fn add_dma_bufs<I: DmaBuf, O: DmaBuf>(
         &mut self,
-        inputs: &[&T],
-        outputs: &[&T],
+        inputs: &[&I],
+        outputs: &[&O],
     ) -> Result<u16, QueueError> {
         if inputs.is_empty() && outputs.is_empty() {
             return Err(QueueError::InvalidArgs);
@@ -225,6 +227,16 @@ impl VirtQueue {
 
         fence(Ordering::SeqCst);
         Ok(head)
+    }
+
+    /// Adds only input DMA buffers to the virtqueue and returns a token.
+    pub fn add_input_bufs<I: DmaBuf>(&mut self, inputs: &[&I]) -> Result<u16, QueueError> {
+        self.add_dma_bufs(inputs, &[] as &[&I])
+    }
+
+    /// Adds only output DMA buffers to the virtqueue and returns a token.
+    pub fn add_output_bufs<O: DmaBuf>(&mut self, outputs: &[&O]) -> Result<u16, QueueError> {
+        self.add_dma_bufs(&[] as &[&O], outputs)
     }
 
     /// Whether there is a used element that can pop.
@@ -385,7 +397,7 @@ impl VirtQueue {
 }
 
 #[repr(C, align(16))]
-#[derive(Debug, Default, Copy, Clone, Pod)]
+#[derive(Clone, Copy, Debug, Default, Pod)]
 pub struct Descriptor {
     addr: u64,
     len: u32,
@@ -409,8 +421,8 @@ fn set_dma_buf<T: DmaBuf>(desc_ptr: &DescriptorPtr, buf: &T) {
 
 bitflags! {
     /// Descriptor flags
-    #[derive(Pod, Default)]
     #[repr(C)]
+    #[derive(Default, Pod)]
     struct DescFlags: u16 {
         const NEXT = 1;
         const WRITE = 2;
@@ -424,7 +436,7 @@ impl PodOnce for DescFlags {}
 /// each ring entry refers to the head of a descriptor chain.
 /// It is only written by the driver and read by the device.
 #[repr(C, align(2))]
-#[derive(Debug, Copy, Clone, Pod)]
+#[derive(Clone, Copy, Debug, Pod)]
 pub struct AvailRing {
     flags: AvailFlags,
     /// A driver MUST NOT decrement the idx.
@@ -435,9 +447,9 @@ pub struct AvailRing {
 
 /// The used ring is where the device returns buffers once it is done with them:
 /// it is only written to by the device, and read by the driver.
-#[repr(C, align(4))]
 #[padding_struct]
-#[derive(Debug, Copy, Clone, Pod)]
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Debug, Pod)]
 pub struct UsedRing {
     // the flag in UsedRing
     flags: u16,
@@ -448,7 +460,7 @@ pub struct UsedRing {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Pod)]
+#[derive(Clone, Copy, Debug, Default, Pod)]
 pub struct UsedElem {
     id: u32,
     len: u32,

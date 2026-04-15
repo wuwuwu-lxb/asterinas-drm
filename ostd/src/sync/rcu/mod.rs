@@ -171,7 +171,7 @@ impl<P: NonNullPtr + Send> RcuInner<P> {
         RcuReadGuardInner {
             obj_ptr: self.ptr.load(Acquire),
             rcu: self,
-            _inner_guard: guard,
+            inner_guard: guard,
         }
     }
 
@@ -207,7 +207,7 @@ impl<P: NonNullPtr> Drop for RcuInner<P> {
 struct RcuReadGuardInner<'a, P: NonNullPtr> {
     obj_ptr: *mut <P as NonNullPtr>::Target,
     rcu: &'a RcuInner<P>,
-    _inner_guard: DisabledPreemptGuard,
+    inner_guard: DisabledPreemptGuard,
 }
 
 impl<P: NonNullPtr + Send> RcuReadGuardInner<'_, P> {
@@ -379,6 +379,12 @@ impl<P: NonNullPtr + Send> RcuReadGuard<'_, P> {
     }
 }
 
+impl<P: NonNullPtr> AsAtomicModeGuard for RcuReadGuard<'_, P> {
+    fn as_atomic_mode_guard(&self) -> &dyn InAtomicMode {
+        self.0.inner_guard.as_atomic_mode_guard()
+    }
+}
+
 impl<P: NonNullPtr + Send> RcuOptionReadGuard<'_, P> {
     /// Gets the reference of the protected data.
     ///
@@ -408,6 +414,12 @@ impl<P: NonNullPtr + Send> RcuOptionReadGuard<'_, P> {
     /// [the ABA problem](https://en.wikipedia.org/wiki/ABA_problem).
     pub fn compare_exchange(self, new_ptr: Option<P>) -> Result<(), Option<P>> {
         self.0.compare_exchange(new_ptr)
+    }
+}
+
+impl<P: NonNullPtr> AsAtomicModeGuard for RcuOptionReadGuard<'_, P> {
+    fn as_atomic_mode_guard(&self) -> &dyn InAtomicMode {
+        self.0.inner_guard.as_atomic_mode_guard()
     }
 }
 
@@ -455,8 +467,8 @@ unsafe fn delay_drop<P: NonNullPtr + Send>(pointer: NonNull<<P as NonNullPtr>::T
 ///
 /// [`RcuDrop<T>`] is guaranteed to have the same layout as `T`. You can also
 /// access the inner value safely via [`RcuDrop<T>`].
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RcuDrop<T: Send + 'static> {
     value: ManuallyDrop<T>,
 }

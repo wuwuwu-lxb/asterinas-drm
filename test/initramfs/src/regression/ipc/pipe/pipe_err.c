@@ -6,6 +6,8 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/poll.h>
+#include <sys/syscall.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 FN_SETUP()
@@ -19,7 +21,7 @@ FN_TEST(close_without_data_then_read)
 	int fildes[2];
 	char buf[8] = { 0 };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_SUCC(close(fildes[1]));
 
@@ -38,7 +40,7 @@ FN_TEST(close_without_data_then_write)
 	int fildes[2];
 	char buf[8] = { 0 };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_SUCC(close(fildes[0]));
 
@@ -57,7 +59,7 @@ FN_TEST(close_with_data_then_read)
 	int fildes[2];
 	char buf[8] = { 0 };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_RES(write(fildes[1], "hello", 5), _ret == 5);
 	TEST_SUCC(close(fildes[1]));
@@ -82,7 +84,7 @@ FN_TEST(close_with_data_then_write)
 	int fildes[2];
 	char buf[8] = { 0 };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_RES(write(fildes[1], "hello", 5), _ret == 5);
 	TEST_SUCC(close(fildes[0]));
@@ -105,7 +107,7 @@ FN_TEST(poll_basic)
 	char buf[8];
 	struct pollfd pfd = { .events = POLL_MASK };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	pfd.fd = fildes[0];
 	TEST_RES(poll(&pfd, 1, 0), (pfd.revents & POLL_MASK) == 0);
@@ -139,7 +141,7 @@ FN_TEST(close_first_then_poll)
 	int fildes[2];
 	struct pollfd pfd = { .events = POLLIN | POLLOUT };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_RES(write(fildes[1], "hello", 5), _ret == 5);
 	TEST_SUCC(close(fildes[0]));
@@ -158,7 +160,7 @@ FN_TEST(close_second_then_poll)
 	char buf[8];
 	struct pollfd pfd = { .events = POLLIN | POLLOUT };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_RES(write(fildes[1], "hello", 5), _ret == 5);
 	TEST_SUCC(close(fildes[1]));
@@ -183,7 +185,7 @@ FN_TEST(zero_reads_always_succeed)
 	int fildes[2];
 	char buf[1] = { 'z' };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_SUCC(read(fildes[0], buf, 0));
 
@@ -200,13 +202,40 @@ FN_TEST(zero_writes_always_succeed)
 	int fildes[2];
 	char buf[1] = { 'z' };
 
-	CHECK(pipe(fildes));
+	TEST_SUCC(pipe(fildes));
 
 	TEST_SUCC(write(fildes[1], buf, 0));
 
 	TEST_SUCC(close(fildes[0]));
 	TEST_SUCC(write(fildes[1], buf, 0));
 
+	TEST_SUCC(close(fildes[1]));
+}
+END_TEST()
+
+// Verifies the Linux-compatible `ESPIPE` result for positional I/O on pipes.
+FN_TEST(zero_length_positional_io_fails_on_pipe)
+{
+	int fildes[2];
+	char buf[1] = { 'z' };
+	struct iovec iov = { .iov_base = buf, .iov_len = 0 };
+
+	TEST_SUCC(pipe(fildes));
+
+	TEST_ERRNO(syscall(SYS_pread64, fildes[0], buf, 0, 3), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pread64, fildes[1], buf, 0, 3), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwrite64, fildes[1], buf, 0, 3), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwrite64, fildes[0], buf, 0, 3), ESPIPE);
+	TEST_ERRNO(syscall(SYS_preadv, fildes[0], NULL, 0, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_preadv, fildes[1], NULL, 0, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwritev, fildes[1], NULL, 0, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwritev, fildes[0], NULL, 0, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_preadv, fildes[0], &iov, 1, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_preadv, fildes[1], &iov, 1, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwritev, fildes[1], &iov, 1, 3, 0), ESPIPE);
+	TEST_ERRNO(syscall(SYS_pwritev, fildes[0], &iov, 1, 3, 0), ESPIPE);
+
+	TEST_SUCC(close(fildes[0]));
 	TEST_SUCC(close(fildes[1]));
 }
 END_TEST()
