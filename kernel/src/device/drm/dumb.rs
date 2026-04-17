@@ -9,8 +9,18 @@ use spin::Once;
 
 use crate::{
     prelude::*,
-    vm::vmo::{CommitFlags, Vmo, VmoFlags, VmoOptions},
+    vm::vmo::{Vmo, VmoFlags, VmoOptions},
 };
+
+#[derive(Debug, Clone)]
+pub(crate) struct DumbBufferSnapshot {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) bpp: u32,
+    pub(crate) pitch: u32,
+    pub(crate) size: u64,
+    pub(crate) data: Vec<u8>,
+}
 
 /// 全局 DumbBufferManager 实例
 static DUMB_BUFFER_MANAGER: Once<DumbBufferManager> = Once::new();
@@ -211,6 +221,36 @@ impl DumbBufferManager {
     fn find_buffer_index(&self, handle: u32) -> Option<usize> {
         let buffers = self.buffers.lock();
         buffers.iter().position(|b| b.id == handle)
+    }
+
+    pub(crate) fn snapshot(&self, handle: u32) -> Result<DumbBufferSnapshot> {
+        let (width, height, bpp, pitch, size) = {
+            let buffers = self.buffers.lock();
+            let buffer = buffers.iter()
+                .find(|buffer| buffer.id == handle)
+                .ok_or_else(|| Error::from(Errno::ENOENT))?;
+            (
+                buffer.width,
+                buffer.height,
+                buffer.bpp,
+                buffer.pitch,
+                buffer.size,
+            )
+        };
+
+        let size = usize::try_from(size).map_err(|_| Error::from(Errno::EINVAL))?;
+        let mut data = vec![0u8; size];
+        let vmo_offset = (handle as usize - 1) * DUMB_BUFFER_SLOT_SIZE;
+        self.vmo.read_bytes(vmo_offset, &mut data)?;
+
+        Ok(DumbBufferSnapshot {
+            width,
+            height,
+            bpp,
+            pitch,
+            size: size as u64,
+            data,
+        })
     }
 
     /// 获取 handle 对应的 VMO 偏移

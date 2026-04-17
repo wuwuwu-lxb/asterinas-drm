@@ -14,19 +14,19 @@ use crate::device::registry::char;
 pub(crate) fn init_in_first_kthread() {
     // 初始化 Dumb Buffer 管理器
     if let Err(e) = dumb::init() {
-        log::warn!("failed to initialize DumbBuffer manager: {:?}", e);
+        ostd::warn!("failed to initialize DumbBuffer manager: {:?}", e);
     } else {
-        log::info!("DumbBuffer manager initialized");
+        ostd::info!("DumbBuffer manager initialized");
     }
 
     // 初始化 Framebuffer 管理器
     fb::init();
-    log::info!("Framebuffer manager initialized");
+    ostd::info!("Framebuffer manager initialized");
 
     // 注册 /dev/dri/card0
     if let Err(e) = char::register(Arc::new(Drm)) {
-        log::warn!("failed to register DRM device: {:?}", e);
+        ostd::warn!("failed to register DRM device: {:?}", e);
     } else {
-        log::info!("DRM device /dev/dri/card0 registered (major 226, minor 0)");
+        ostd::info!("DRM device /dev/dri/card0 registered (major 226, minor 0)");
     }
 }

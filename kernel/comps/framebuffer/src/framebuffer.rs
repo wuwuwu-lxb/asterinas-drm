@@ -98,10 +98,10 @@ pub static FRAMEBUFFER: Once<Arc<dyn FrameBufferOps + Send + Sync>> = Once::new(
 
 pub(crate) fn init() {
     let fb_arg = boot_info().framebuffer_arg;
-    log::info!("Framebuffer boot arg: {:?}", fb_arg);
+    ostd::info!("Framebuffer boot arg: {:?}", fb_arg);
 
     let Some(framebuffer_arg) = fb_arg else {
-        log::info!(
+        ostd::info!(
             "No hardware framebuffer, using RAM fallback {}x{}x32bpp",
             DEFAULT_FB_WIDTH,
             DEFAULT_FB_HEIGHT
@@ -114,7 +114,7 @@ pub(crate) fn init() {
 
     if framebuffer_arg.address == 0 {
         ostd::error!("Framebuffer address is zero");
-        log::info!(
+        ostd::info!(
             "Using RAM fallback {}x{}x32bpp",
             DEFAULT_FB_WIDTH,
             DEFAULT_FB_HEIGHT
@@ -137,7 +137,7 @@ pub(crate) fn init() {
                 "Unsupported framebuffer pixel format: {} bpp",
                 framebuffer_arg.bpp
             );
-            log::info!(
+            ostd::info!(
                 "Using RAM fallback {}x{}x32bpp",
                 DEFAULT_FB_WIDTH,
                 DEFAULT_FB_HEIGHT
