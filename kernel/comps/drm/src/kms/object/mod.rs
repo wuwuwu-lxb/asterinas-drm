@@ -9,8 +9,14 @@ use core::{
 use hashbrown::HashMap;
 
 use crate::{
-    DrmError,
-    kms::object::{connector::DrmConnector, crtc::DrmCrtc, encoder::DrmEncoder, plane::DrmPlane},
+    DrmError, DrmKmsObjectProp,
+    kms::object::{
+        connector::DrmConnector,
+        crtc::DrmCrtc,
+        encoder::DrmEncoder,
+        plane::DrmPlane,
+        property::{DrmProperty, blob::DrmPropertyBlob},
+    },
 };
 
 pub mod builder;
@@ -20,6 +26,7 @@ pub mod display;
 pub mod encoder;
 pub mod geometry;
 pub mod plane;
+pub mod property;
 
 pub type KmsObjectId = u32;
 pub type KmsObjectIndex = usize;
@@ -34,6 +41,8 @@ pub enum DrmKmsObject {
     Crtc(DrmCrtc),
     Encoder(DrmEncoder),
     Connector(DrmConnector),
+    Property(DrmProperty),
+    Blob(DrmPropertyBlob),
 }
 
 #[repr(u32)]
@@ -137,6 +146,7 @@ impl DrmKmsObjectStore {
             DrmKmsObject::Crtc(_) => self.crtc_ids.push(id),
             DrmKmsObject::Encoder(_) => self.encoder_ids.push(id),
             DrmKmsObject::Connector(_) => self.connector_ids.push(id),
+            _ => {}
         }
 
         self.object_by_id.insert(id, object);
@@ -160,5 +170,43 @@ impl DrmKmsObjectStore {
     pub fn get_object<T: DrmKmsObjectCast>(&self, id: KmsObjectId) -> Option<&T> {
         let obj = self.object_by_id.get(&id)?;
         T::cast(obj)
+    }
+
+    pub fn get_object_props(
+        &self,
+        id: KmsObjectId,
+        type_: DrmKmsObjectType,
+    ) -> Result<&DrmKmsObjectProp, DrmError> {
+        let object = self.object_by_id.get(&id).ok_or(DrmError::NotFound)?;
+
+        match object {
+            DrmKmsObject::Plane(plane)
+                if matches!(type_, DrmKmsObjectType::Any | DrmKmsObjectType::Plane) =>
+            {
+                Ok(plane.properties())
+            }
+            DrmKmsObject::Crtc(crtc)
+                if matches!(type_, DrmKmsObjectType::Any | DrmKmsObjectType::Crtc) =>
+            {
+                Ok(crtc.properties())
+            }
+            DrmKmsObject::Connector(connector)
+                if matches!(type_, DrmKmsObjectType::Any | DrmKmsObjectType::Connector) =>
+            {
+                Ok(connector.properties())
+            }
+            _ => Err(DrmError::Invalid),
+        }
+    }
+
+    pub fn remove_blob(&mut self, id: KmsObjectId) -> Option<DrmPropertyBlob> {
+        if !matches!(self.object_by_id.get(&id), Some(DrmKmsObject::Blob(_))) {
+            return None;
+        }
+
+        match self.object_by_id.remove(&id) {
+            Some(DrmKmsObject::Blob(blob)) => Some(blob),
+            _ => None,
+        }
     }
 }

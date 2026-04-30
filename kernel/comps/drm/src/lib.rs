@@ -33,6 +33,10 @@ pub use kms::{
         display::{DrmDisplayInfo, DrmDisplayMode, DrmModeModeInfo},
         encoder::{DrmEncoder, DrmEncoderState, DrmEncoderType},
         plane::{DrmPlane, DrmPlaneState, DrmPlaneType},
+        property::{
+            DRM_PROP_NAME_LEN, DrmKmsObjectProp, DrmProperty, DrmPropertyEnum, DrmPropertyFlags,
+            DrmPropertyKind, DrmPropertySpec, blob::DrmPropertyBlob,
+        },
     },
 };
 use ostd::sync::Mutex;

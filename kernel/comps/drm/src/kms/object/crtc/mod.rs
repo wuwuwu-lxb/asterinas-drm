@@ -4,7 +4,12 @@ use core::fmt::Debug;
 
 use ostd::sync::Mutex;
 
-use crate::kms::object::{DrmKmsObject, DrmKmsObjectCast, KmsObjectId, display::DrmDisplayMode};
+use crate::kms::object::{
+    DrmKmsObject, DrmKmsObjectCast, KmsObjectId, display::DrmDisplayMode,
+    property::DrmKmsObjectProp,
+};
+
+pub mod property;
 
 #[derive(Debug, Default)]
 pub struct DrmCrtcState {
@@ -40,6 +45,7 @@ pub struct DrmCrtc {
     gamma_size_px: u32,
     primary_plane_id: KmsObjectId,
     cursor_plane_id: Option<KmsObjectId>,
+    properties: DrmKmsObjectProp,
 }
 
 impl DrmCrtc {
@@ -47,12 +53,14 @@ impl DrmCrtc {
         gamma_size_px: u32,
         primary_plane_id: KmsObjectId,
         cursor_plane_id: Option<KmsObjectId>,
+        properties: DrmKmsObjectProp,
     ) -> Self {
         Self {
             state: Mutex::new(DrmCrtcState::default()),
             gamma_size_px,
             primary_plane_id,
             cursor_plane_id,
+            properties,
         }
     }
 
@@ -67,6 +75,10 @@ impl DrmCrtc {
             enable: state.enable,
             active: state.active,
         }
+    }
+
+    pub fn properties(&self) -> &DrmKmsObjectProp {
+        &self.properties
     }
 
     pub fn gamma_size_px(&self) -> u32 {

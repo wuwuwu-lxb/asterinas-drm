@@ -4,7 +4,10 @@ use core::fmt::Debug;
 
 use ostd::sync::RwLock;
 
-use crate::kms::object::DrmKmsObjectStore;
+use crate::{
+    DrmError,
+    kms::object::{DrmKmsObjectStore, KmsObjectId},
+};
 
 pub mod object;
 
@@ -29,4 +32,5 @@ pub mod object;
 ///
 pub trait DrmKmsOps: Debug + Send + Sync {
     fn kms_objects(&self) -> &RwLock<DrmKmsObjectStore>;
+    fn update_connector_state(&self, conn_id: KmsObjectId) -> Result<(), DrmError>;
 }

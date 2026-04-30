@@ -1,30 +1,76 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec, vec::Vec};
 
 use hashbrown::HashMap;
 
 use crate::{
     DrmConnType, DrmEncoderType, DrmError, DrmKmsObjectType, DrmPlaneType,
     kms::object::{
-        DrmKmsObject, DrmKmsObjectStore, KmsObjectIndex, connector::DrmConnector, crtc::DrmCrtc,
-        display::DrmDisplayFormat, encoder::DrmEncoder, plane::DrmPlane,
+        DrmKmsObject, DrmKmsObjectStore, KmsObjectIndex,
+        connector::DrmConnector,
+        crtc::DrmCrtc,
+        display::DrmDisplayFormat,
+        encoder::DrmEncoder,
+        plane::{DrmPlane, property::DrmPlaneProps},
+        property::{
+            DrmKmsObjectProp, DrmPropertyKind, DrmPropertySpec, KmsObjectPropValue,
+            blob::DrmPropertyBlob,
+        },
     },
 };
+
+#[derive(Debug)]
+struct PendingObjectProp {
+    spec: Box<dyn DrmPropertySpec>,
+    value: PendingObjectPropValue,
+}
+
+#[derive(Debug)]
+pub enum PendingObjectPropValue {
+    Value(KmsObjectPropValue),
+    Blob(DrmPropertyBlob),
+}
 
 #[derive(Debug)]
 struct PendingPlane {
     type_: DrmPlaneType,
     format_types: Vec<DrmDisplayFormat>,
     attached_crtcs: Vec<KmsObjectIndex>,
+    property_values: Vec<PendingObjectProp>,
 }
 
 impl PendingPlane {
     fn new(type_: DrmPlaneType, format_types: Vec<DrmDisplayFormat>) -> Self {
+        use DrmPlaneProps::*;
+
+        // Same Linux-compatible default property construction pattern.
+        //
+        // For mutable atomic properties, the initial value recorded here is only a
+        // placeholder used when attaching the property to the object.
+        // Their current value is expected to come from the typed object state at query
+        // time, matching modern Linux DRM atomic semantics.
+        // Only immutable/static properties rely on the attached value itself.
+        // For example, `CRTC_ID` is read from `DrmPlaneState`, while immutable/static
+        // properties such as `type` still rely on the attached value itself.
+        let property_values = vec![
+            PendingObjectProp {
+                spec: Box::new(Type),
+                value: PendingObjectPropValue::Value(type_ as u64),
+            },
+            PendingObjectProp {
+                spec: Box::new(InFormats),
+                value: PendingObjectPropValue::Blob(DrmPropertyBlob::encode_in_formats(
+                    &format_types,
+                )),
+            },
+        ];
+
         Self {
             type_,
             format_types,
             attached_crtcs: Vec::new(),
+            property_values,
         }
     }
 }
@@ -34,18 +80,23 @@ struct PendingCrtc {
     gamma_size_px: u32,
     primary_plane: KmsObjectIndex,
     cursor_plane: Option<KmsObjectIndex>,
+    property_values: Vec<PendingObjectProp>,
 }
 
 impl PendingCrtc {
+    // Same design as `PendingPlane::new().
     fn new(
         gamma_size_px: u32,
         primary_plane: KmsObjectIndex,
         cursor_plane: Option<KmsObjectIndex>,
     ) -> Self {
+        let property_values = vec![];
+
         Self {
             gamma_size_px,
             primary_plane,
             cursor_plane,
+            property_values,
         }
     }
 }
@@ -60,13 +111,18 @@ struct PendingEncoder {
 struct PendingConnector {
     type_: DrmConnType,
     attached_encoders: Vec<KmsObjectIndex>,
+    property_values: Vec<PendingObjectProp>,
 }
 
 impl PendingConnector {
+    // Same design as `PendingPlane::new().
     fn new(type_: DrmConnType) -> Self {
+        let property_values = vec![];
+
         Self {
             type_,
             attached_encoders: Vec::new(),
+            property_values,
         }
     }
 }
@@ -217,6 +273,34 @@ impl DrmKmsObjectBuilder {
         Ok(())
     }
 
+    pub fn add_property(
+        &mut self,
+        index: KmsObjectIndex,
+        property_spec: Box<dyn DrmPropertySpec>,
+        initial_value: PendingObjectPropValue,
+        type_: DrmKmsObjectType,
+    ) -> Result<(), DrmError> {
+        let property_values = match type_ {
+            DrmKmsObjectType::Crtc => {
+                let crtc = self.crtcs.get_mut(index).ok_or(DrmError::Invalid)?;
+                &mut crtc.property_values
+            }
+            DrmKmsObjectType::Connector => {
+                let connector = self.connectors.get_mut(index).ok_or(DrmError::Invalid)?;
+                &mut connector.property_values
+            }
+            DrmKmsObjectType::Plane => {
+                let plane = self.planes.get_mut(index).ok_or(DrmError::Invalid)?;
+                &mut plane.property_values
+            }
+            _ => return Err(DrmError::NotSupported),
+        };
+
+        add_or_override_property(property_values, property_spec, initial_value);
+
+        Ok(())
+    }
+
     pub fn build(self) -> Result<DrmKmsObjectStore, DrmError> {
         self.validate_topology()?;
 
@@ -224,10 +308,13 @@ impl DrmKmsObjectBuilder {
         let mut next_type_index_by_connector_type = HashMap::<DrmConnType, u32>::new();
 
         for plane in &self.planes {
+            let property = build_object_properties(&mut store, &plane.property_values)?;
+
             let object = DrmKmsObject::Plane(DrmPlane::new(
                 plane.type_,
                 plane.format_types.clone(),
                 &plane.attached_crtcs,
+                property,
             ));
             let _ = store.add_object(object)?;
         }
@@ -245,10 +332,13 @@ impl DrmKmsObjectBuilder {
                 None => None,
             };
 
+            let property = build_object_properties(&mut store, &crtc.property_values)?;
+
             let object = DrmKmsObject::Crtc(DrmCrtc::new(
                 crtc.gamma_size_px,
                 primary_plane_id,
                 cursor_plane_id,
+                property,
             ));
             let _ = store.add_object(object)?;
         }
@@ -266,10 +356,13 @@ impl DrmKmsObjectBuilder {
             let type_index = *next_type_index;
             *next_type_index = (*next_type_index).checked_add(1).ok_or(DrmError::Invalid)?;
 
+            let property = build_object_properties(&mut store, &connector.property_values)?;
+
             let object = DrmKmsObject::Connector(DrmConnector::new(
                 connector.type_,
                 type_index,
                 &connector.attached_encoders,
+                property,
             ));
             let _ = store.add_object(object)?;
         }
@@ -305,4 +398,55 @@ impl DrmKmsObjectBuilder {
 
         Ok(())
     }
+}
+
+fn add_or_override_property(
+    property_values: &mut Vec<PendingObjectProp>,
+    property_spec: Box<dyn DrmPropertySpec>,
+    value: PendingObjectPropValue,
+) {
+    let property_name = property_spec.name();
+
+    if let Some(existing) = property_values
+        .iter_mut()
+        .find(|pending| pending.spec.name() == property_name)
+    {
+        existing.spec = property_spec;
+        existing.value = value;
+    } else {
+        property_values.push(PendingObjectProp {
+            spec: property_spec,
+            value,
+        });
+    }
+}
+
+fn build_object_properties(
+    store: &mut DrmKmsObjectStore,
+    property_values: &[PendingObjectProp],
+) -> Result<DrmKmsObjectProp, DrmError> {
+    let mut properties = DrmKmsObjectProp::default();
+
+    for pending_property in property_values {
+        let property = pending_property.spec.build();
+
+        // Blob-typed properties do not store the raw blob payload directly in
+        // the object property map. Instead, the payload is first materialized
+        // as a `DrmModeBlob` object in the store, and the final property value
+        // becomes that blob object's ID, matching Linux DRM semantics.
+        let prop_value = match (property.kind(), &pending_property.value) {
+            (DrmPropertyKind::Blob, PendingObjectPropValue::Blob(data)) => {
+                store.add_object(DrmKmsObject::Blob(data.clone()))? as u64
+            }
+            (_, PendingObjectPropValue::Value(value)) => *value,
+            _ => return Err(DrmError::Invalid),
+        };
+
+        properties.add_property(
+            store.add_object(DrmKmsObject::Property(property))?,
+            prop_value,
+        );
+    }
+
+    Ok(properties)
 }
