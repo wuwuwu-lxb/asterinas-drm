@@ -24,7 +24,7 @@ drm_ioc!(
     DRM_IOCTL_SET_CLIENT_CAP,
     0x0d,
     InData<DrmSetClientCap>,
-    DrmIoctlFlags::DEFAULT
+    DrmIoctlFlags::MODESET
 );
 drm_ioc!(
     DrmIoctlSetMaster,
@@ -39,4 +39,81 @@ drm_ioc!(
     0x1f,
     NoData,
     DrmIoctlFlags::DEFAULT
+);
+drm_ioc!(
+    DrmIoctlModeGetResources,
+    DRM_IOCTL_MODE_GETRESOURCES,
+    0xa0,
+    InOutData<DrmModeGetResources>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetCrtc,
+    DRM_IOCTL_MODE_GETCRTC,
+    0xa1,
+    InOutData<DrmModeCrtc>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetEncoder,
+    DRM_IOCTL_MODE_GETENCODER,
+    0xa6,
+    InOutData<DrmModeGetEncoder>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetConnector,
+    DRM_IOCTL_MODE_GETCONNECTOR,
+    0xa7,
+    InOutData<DrmModeGetConnector>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetProperty,
+    DRM_IOCTL_MODE_GETPROPERTY,
+    0xaa,
+    InOutData<DrmModeGetProperty>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetPropBlob,
+    DRM_IOCTL_MODE_GETPROPBLOB,
+    0xac,
+    InOutData<DrmModeGetBlob>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetPlaneResources,
+    DRM_IOCTL_MODE_GETPLANERESOURCES,
+    0xb5,
+    InOutData<DrmModeGetPlaneRes>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeGetPlane,
+    DRM_IOCTL_MODE_GETPLANE,
+    0xb6,
+    InOutData<DrmModeGetPlane>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeObjectGetProps,
+    DRM_IOCTL_MODE_OBJ_GETPROPERTIES,
+    0xb9,
+    InOutData<DrmModeObjectGetProps>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeCreatePropBlob,
+    DRM_IOCTL_MODE_CREATEPROPBLOB,
+    0xbd,
+    InOutData<DrmModeCreateBlob>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeDestroyPropBlob,
+    DRM_IOCTL_MODE_DESTROYPROPBLOB,
+    0xbe,
+    InOutData<DrmModeDestroyBlob>,
+    DrmIoctlFlags::MODESET
 );

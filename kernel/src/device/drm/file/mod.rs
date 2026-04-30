@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use aster_drm::{DrmDevice, DrmFeatures};
@@ -19,6 +20,8 @@ use crate::{
     },
     util::ioctl::RawIoctl,
 };
+
+mod kms;
 
 #[derive(Debug, Default)]
 struct DrmFileCaps {
@@ -85,6 +88,7 @@ pub(super) struct DrmFile {
     minor: Arc<DrmMinor>,
     caps: DrmFileCaps,
     auth_state: Mutex<DrmFileAuthState>,
+    blob_ids: Mutex<Vec<u32>>,
 }
 
 impl DrmFile {
@@ -103,6 +107,7 @@ impl DrmFile {
             minor,
             caps: DrmFileCaps::default(),
             auth_state: Mutex::new(auth_state),
+            blob_ids: Mutex::new(Vec::new()),
         }
     }
 
@@ -158,7 +163,13 @@ impl DrmFile {
 
 impl Drop for DrmFile {
     fn drop(&mut self) {
-        self.minor.drop_master(self.file_id)
+        self.minor.drop_master(self.file_id);
+
+        let blob_ids: Vec<u32> = self.blob_ids.get_mut().drain(..).collect();
+        let mut objects = self.device().kms_objects().write();
+        for blob_id in blob_ids {
+            let _ = objects.remove_blob(blob_id);
+        }
     }
 }
 
@@ -407,6 +418,17 @@ impl FileIo for DrmFile {
                     self.minor.drop_master(self.file_id);
                     Ok(0)
                 }
+                cmd @ DrmIoctlModeGetResources => self.ioctl_mode_get_resources(cmd),
+                cmd @ DrmIoctlModeGetCrtc => self.ioctl_mode_get_crtc(cmd),
+                cmd @ DrmIoctlModeGetEncoder => self.ioctl_mode_get_encoder(cmd),
+                cmd @ DrmIoctlModeGetConnector => self.ioctl_mode_get_connector(cmd),
+                cmd @ DrmIoctlModeGetProperty => self.ioctl_mode_get_property(cmd),
+                cmd @ DrmIoctlModeGetPropBlob => self.ioctl_mode_get_blob(cmd),
+                cmd @ DrmIoctlModeGetPlaneResources => self.ioctl_mode_get_plane_resources(cmd),
+                cmd @ DrmIoctlModeGetPlane => self.ioctl_mode_get_plane(cmd),
+                cmd @ DrmIoctlModeObjectGetProps => self.ioctl_mode_get_object_props(cmd),
+                cmd @ DrmIoctlModeCreatePropBlob => self.ioctl_mode_create_blob(cmd),
+                cmd @ DrmIoctlModeDestroyPropBlob => self.ioctl_mode_destroy_blob(cmd),
                 _ => {
                     ostd::debug!(
                         "the ioctl command {:#x} is unknown for framebuffer devices",
@@ -417,4 +439,23 @@ impl FileIo for DrmFile {
             }
         )
     }
+}
+
+fn copy_array_to_user<T: Pod>(
+    vm: &impl VmIo,
+    user_ptr: u64,
+    user_capacity: u32,
+    values: &[T],
+) -> Result<()> {
+    if user_ptr == 0 || user_capacity == 0 || values.is_empty() {
+        return Ok(());
+    }
+
+    let total = u32::try_from(values.len())
+        .map_err(|_| Error::with_message(Errno::EOVERFLOW, "array too large"))?;
+    let copied = core::cmp::min(user_capacity, total);
+    if copied != 0 {
+        vm.write_slice(user_ptr as usize, &values[..copied as usize])?;
+    }
+    Ok(())
 }
