@@ -375,7 +375,7 @@ impl<'a, 'b> VmarMapOptions<'a, 'b> {
         // VMAR.
         if let Some(mappable) = device_mappable {
             let mut rss_delta = RssDelta::new(parent);
-            vm_mapping.populate_device(parent.vm_space(), mappable, vmo_offset, &mut rss_delta);
+            vm_mapping.populate_device(parent.vm_space(), mappable, vmo_offset, &mut rss_delta)?;
         }
 
         // Add the mapping to the VMAR.

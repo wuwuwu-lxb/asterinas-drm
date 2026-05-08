@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use aster_drm::{DrmDevice, DrmFeatures};
+use aster_drm::{DrmDevice, DrmFeatures, DrmGemObject};
+use hashbrown::HashMap;
 use ostd::mm::VmIo;
 
 use crate::{
     device::drm::{DrmMinorType, has_current_sys_admin, ioctl::*, minor::DrmMinor},
     events::IoEvents,
     fs::{
-        file::{FileIo, StatusFlags},
+        file::{FileIo, Mappable, StatusFlags},
         vfs::inode::InodeIo,
     },
     prelude::*,
@@ -21,6 +22,7 @@ use crate::{
     util::ioctl::RawIoctl,
 };
 
+mod gem;
 mod kms;
 
 #[derive(Debug, Default)]
@@ -89,6 +91,9 @@ pub(super) struct DrmFile {
     caps: DrmFileCaps,
     auth_state: Mutex<DrmFileAuthState>,
     blob_ids: Mutex<Vec<u32>>,
+
+    next_gem_handle: AtomicU32,
+    gem_table: Mutex<HashMap<u32, Arc<dyn DrmGemObject>>>,
 }
 
 impl DrmFile {
@@ -108,6 +113,8 @@ impl DrmFile {
             caps: DrmFileCaps::default(),
             auth_state: Mutex::new(auth_state),
             blob_ids: Mutex::new(Vec::new()),
+            next_gem_handle: AtomicU32::new(1),
+            gem_table: Mutex::new(HashMap::new()),
         }
     }
 
@@ -165,6 +172,15 @@ impl Drop for DrmFile {
     fn drop(&mut self) {
         self.minor.drop_master(self.file_id);
 
+        for gem_object in self
+            .gem_table
+            .get_mut()
+            .drain()
+            .map(|(_, gem_object)| gem_object)
+        {
+            gem_object.vma_node().revoke(self.file_id);
+        }
+
         let blob_ids: Vec<u32> = self.blob_ids.get_mut().drain(..).collect();
         let mut objects = self.device().kms_objects().write();
         for blob_id in blob_ids {
@@ -207,6 +223,10 @@ impl FileIo for DrmFile {
 
     fn is_offset_aware(&self) -> bool {
         true
+    }
+
+    fn mappable(&self) -> Result<&dyn Mappable> {
+        Ok(self as &dyn Mappable)
     }
 
     fn ioctl(&self, raw_ioctl: RawIoctl) -> Result<i32> {
@@ -424,6 +444,9 @@ impl FileIo for DrmFile {
                 cmd @ DrmIoctlModeGetConnector => self.ioctl_mode_get_connector(cmd),
                 cmd @ DrmIoctlModeGetProperty => self.ioctl_mode_get_property(cmd),
                 cmd @ DrmIoctlModeGetPropBlob => self.ioctl_mode_get_blob(cmd),
+                cmd @ DrmIoctlModeCreateDumb => self.ioctl_mode_create_dumb(cmd),
+                cmd @ DrmIoctlModeMapDumb => self.ioctl_mode_map_dumb(cmd),
+                cmd @ DrmIoctlModeDestroyDumb => self.ioctl_mode_destroy_dumb(cmd),
                 cmd @ DrmIoctlModeGetPlaneResources => self.ioctl_mode_get_plane_resources(cmd),
                 cmd @ DrmIoctlModeGetPlane => self.ioctl_mode_get_plane(cmd),
                 cmd @ DrmIoctlModeObjectGetProps => self.ioctl_mode_get_object_props(cmd),

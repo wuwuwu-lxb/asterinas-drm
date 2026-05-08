@@ -1048,7 +1048,6 @@ impl MappingHandle<'_, '_, '_> {
     /// Maps a [`UFrame`].
     ///
     /// `offset` specifies the virtual address offset (from the start of the memory region).
-    #[expect(dead_code)]
     pub fn map_frame(&mut self, offset: usize, frame: UFrame) {
         self.map_frame_with(offset, frame, self.vm_mapping.perms, CachePolicy::Writeback);
     }
@@ -1141,7 +1140,7 @@ impl VmMapping {
         mappable: &dyn Mappable,
         vmo_offset: usize,
         rss_delta: &mut RssDelta,
-    ) {
+    ) -> Result<()> {
         debug_assert!(matches!(self.mapped_mem, MappedMemory::Anonymous));
 
         let handle = MappingHandle {
@@ -1149,8 +1148,9 @@ impl VmMapping {
             vm_space,
             rss_delta,
         };
-        let mapped_obj = mappable.map(vmo_offset, handle);
+        let mapped_obj = mappable.map(vmo_offset, handle)?;
 
         self.mapped_mem = MappedMemory::Device(mapped_obj);
+        Ok(())
     }
 }

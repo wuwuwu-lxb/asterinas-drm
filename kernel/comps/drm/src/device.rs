@@ -2,7 +2,7 @@
 
 use core::fmt::Debug;
 
-use crate::{DrmError, kms::DrmKmsOps};
+use crate::{DrmError, gem::{DrmGemOps, vma_manager::DrmVmaOffsetManager}, kms::DrmKmsOps};
 
 bitflags::bitflags! {
     pub struct DrmFeatures: u32 {
@@ -32,11 +32,12 @@ bitflags::bitflags! {
 /// while higher-level DRM operations are expected to be layered as
 /// dedicated operation traits.
 ///
-pub trait DrmDevice: DrmKmsOps + Debug + Send + Sync {
+pub trait DrmDevice: DrmKmsOps + DrmGemOps + Debug + Send + Sync {
     fn name(&self) -> &str;
     fn desc(&self) -> &str;
     fn features(&self) -> &DrmFeatures;
     fn caps(&self) -> &DrmDeviceCaps;
+    fn vma_manager(&self) -> &DrmVmaOffsetManager;
 }
 
 impl dyn DrmDevice {

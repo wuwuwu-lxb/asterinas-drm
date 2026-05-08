@@ -83,6 +83,27 @@ drm_ioc!(
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(
+    DrmIoctlModeCreateDumb,
+    DRM_IOCTL_MODE_CREATE_DUMB,
+    0xb2,
+    InOutData<DrmModeCreateDumb>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeMapDumb,
+    DRM_IOCTL_MODE_MAP_DUMB,
+    0xb3,
+    InOutData<DrmModeMapDumb>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeDestroyDumb,
+    DRM_IOCTL_MODE_DESTROY_DUMB,
+    0xb4,
+    InOutData<DrmModeDestroyDumb>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
     DrmIoctlModeGetPlaneResources,
     DRM_IOCTL_MODE_GETPLANERESOURCES,
     0xb5,

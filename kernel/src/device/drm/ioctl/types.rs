@@ -169,6 +169,32 @@ pub struct DrmModeGetBlob {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeCreateDumb {
+    pub height: u32,
+    pub width: u32,
+    pub bpp: u32,
+    pub flags: u32,
+    pub handle: u32,
+    pub pitch: u32,
+    pub size: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeMapDumb {
+    pub handle: u32,
+    pub pad: u32,
+    pub offset: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeDestroyDumb {
+    pub handle: u32,
+}
+
+#[repr(C)]
 #[padding_struct]
 #[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmModeGetPlaneRes {

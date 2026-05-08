@@ -157,7 +157,7 @@ pub trait Mappable {
     /// Fills the memory region to map with `handle`.
     ///
     /// `offset` specifies the file offset.
-    fn map(&self, offset: usize, handle: MappingHandle) -> Box<dyn MappedObject>;
+    fn map(&self, offset: usize, handle: MappingHandle) -> Result<Box<dyn MappedObject>>;
 
     /// Returns a reference to the VMO for reverse mappings, if any.
     ///

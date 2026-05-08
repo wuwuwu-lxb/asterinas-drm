@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::vec;
+use alloc::{sync::Arc, vec};
 
 use aster_framebuffer::FRAMEBUFFER;
 use ostd::sync::RwLock;
 
 use crate::{
     DrmConnStatus, DrmConnType, DrmConnector, DrmDisplayInfo, DrmDisplayMode, DrmEncoderType,
-    DrmError, DrmKmsObjectType, DrmPlaneType,
+    DrmError, DrmGemObject, DrmKmsObjectType, DrmPlaneType,
     device::{DrmDevice, DrmDeviceCaps, DrmFeatures},
+    gem::{DrmGemOps, DrmIoctlGemCtx, vma_manager::DrmVmaOffsetManager},
     kms::{
         DrmKmsOps,
         object::{
@@ -29,6 +30,7 @@ pub(crate) struct SimpleDrmDevice {
     caps: DrmDeviceCaps,
     features: DrmFeatures,
     objects: RwLock<DrmKmsObjectStore>,
+    vma_manager: DrmVmaOffsetManager,
 }
 
 impl SimpleDrmDevice {
@@ -39,6 +41,7 @@ impl SimpleDrmDevice {
             caps: DrmDeviceCaps::default(),
             features: DrmFeatures::GEM | DrmFeatures::MODESET | DrmFeatures::ATOMIC,
             objects: RwLock::new(objects),
+            vma_manager: DrmVmaOffsetManager::new(),
         })
     }
 
@@ -116,6 +119,20 @@ impl DrmKmsOps for SimpleDrmDevice {
     }
 }
 
+impl DrmGemOps for SimpleDrmDevice {
+    fn create_dumb(
+        &self,
+        width: u32,
+        height: u32,
+        bpp: u32,
+        ctx: &dyn DrmIoctlGemCtx,
+    ) -> Result<Arc<dyn DrmGemObject>, DrmError> {
+        let pitch = width.checked_mul(bpp / 8).ok_or(DrmError::Invalid)?;
+        let size = pitch.checked_mul(height).ok_or(DrmError::Invalid)? as usize;
+        ctx.create_shmem_gem(size, pitch)
+    }
+}
+
 impl DrmDevice for SimpleDrmDevice {
     fn name(&self) -> &str {
         SIMPLEDRM_NAME
@@ -131,6 +148,10 @@ impl DrmDevice for SimpleDrmDevice {
 
     fn caps(&self) -> &DrmDeviceCaps {
         &self.caps
+    }
+
+    fn vma_manager(&self) -> &DrmVmaOffsetManager {
+        &self.vma_manager
     }
 }
 
