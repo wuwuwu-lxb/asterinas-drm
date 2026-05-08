@@ -175,11 +175,7 @@ impl DrmVmaOffsetManager {
     }
 
     /// Looks up the node whose start page matches exactly.
-    pub fn exact_lookup(
-        &self,
-        start_page: u64,
-        pages: u64,
-    ) -> Option<Arc<dyn DrmGemObject>> {
+    pub fn exact_lookup(&self, start_page: u64, pages: u64) -> Option<Arc<dyn DrmGemObject>> {
         let gem_object = self.lookup(start_page, pages)?;
         let node = gem_object.vma_node();
         (node.start_page() == start_page).then_some(gem_object)
@@ -218,9 +214,7 @@ impl DrmVmaOffsetNode {
     pub fn allow(&self, open_id: u32) -> Result<(), DrmError> {
         let mut allowed_files = self.allowed_files.lock();
         let count = allowed_files.entry(open_id).or_insert(0);
-        *count = count
-            .checked_add(1)
-            .ok_or_else(|| DrmError::NoMemory)?;
+        *count = count.checked_add(1).ok_or_else(|| DrmError::NoMemory)?;
         Ok(())
     }
 
@@ -349,9 +343,6 @@ fn pages_from_size(size: usize) -> Result<u64, DrmError> {
         return Err(DrmError::Invalid);
     }
 
-    let aligned_size = size
-        .checked_add(PAGE_SIZE - 1)
-        .ok_or(DrmError::NoMemory)?
-        / PAGE_SIZE;
+    let aligned_size = size.checked_add(PAGE_SIZE - 1).ok_or(DrmError::NoMemory)? / PAGE_SIZE;
     u64::try_from(aligned_size).map_err(|_| DrmError::NoMemory)
 }

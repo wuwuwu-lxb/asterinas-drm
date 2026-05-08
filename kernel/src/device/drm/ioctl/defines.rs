@@ -83,6 +83,20 @@ drm_ioc!(
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(
+    DrmIoctlModeAddFB,
+    DRM_IOCTL_MODE_ADDFB,
+    0xae,
+    InOutData<DrmModeFbCmd>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeRmFB,
+    DRM_IOCTL_MODE_RMFB,
+    0xaf,
+    InOutData<u32>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
     DrmIoctlModeCreateDumb,
     DRM_IOCTL_MODE_CREATE_DUMB,
     0xb2,
@@ -115,6 +129,13 @@ drm_ioc!(
     DRM_IOCTL_MODE_GETPLANE,
     0xb6,
     InOutData<DrmModeGetPlane>,
+    DrmIoctlFlags::MODESET
+);
+drm_ioc!(
+    DrmIoctlModeAddFB2,
+    DRM_IOCTL_MODE_ADDFB2,
+    0xb8,
+    InOutData<DrmModeFbCmd2>,
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(

@@ -91,6 +91,7 @@ pub(super) struct DrmFile {
     caps: DrmFileCaps,
     auth_state: Mutex<DrmFileAuthState>,
     blob_ids: Mutex<Vec<u32>>,
+    framebuffer_ids: Mutex<Vec<u32>>,
 
     next_gem_handle: AtomicU32,
     gem_table: Mutex<HashMap<u32, Arc<dyn DrmGemObject>>>,
@@ -113,6 +114,7 @@ impl DrmFile {
             caps: DrmFileCaps::default(),
             auth_state: Mutex::new(auth_state),
             blob_ids: Mutex::new(Vec::new()),
+            framebuffer_ids: Mutex::new(Vec::new()),
             next_gem_handle: AtomicU32::new(1),
             gem_table: Mutex::new(HashMap::new()),
         }
@@ -182,9 +184,22 @@ impl Drop for DrmFile {
         }
 
         let blob_ids: Vec<u32> = self.blob_ids.get_mut().drain(..).collect();
+        let framebuffer_ids: Vec<u32> = self.framebuffer_ids.get_mut().drain(..).collect();
         let mut objects = self.device().kms_objects().write();
         for blob_id in blob_ids {
             let _ = objects.remove_blob(blob_id);
+        }
+        for framebuffer_id in framebuffer_ids {
+            let plane_ids = objects.collect_object_ids(aster_drm::DrmKmsObjectType::Plane, None);
+            for plane_id in plane_ids {
+                let Some(plane) = objects.get_object::<aster_drm::DrmPlane>(plane_id) else {
+                    continue;
+                };
+                if plane.snapshot().fb_id() == Some(framebuffer_id) {
+                    plane.set_fb_id(None);
+                }
+            }
+            let _ = objects.remove_framebuffer(framebuffer_id);
         }
     }
 }
@@ -444,11 +459,14 @@ impl FileIo for DrmFile {
                 cmd @ DrmIoctlModeGetConnector => self.ioctl_mode_get_connector(cmd),
                 cmd @ DrmIoctlModeGetProperty => self.ioctl_mode_get_property(cmd),
                 cmd @ DrmIoctlModeGetPropBlob => self.ioctl_mode_get_blob(cmd),
+                cmd @ DrmIoctlModeAddFB => self.ioctl_mode_add_fb(cmd),
+                cmd @ DrmIoctlModeRmFB => self.ioctl_mode_rm_fb(cmd),
                 cmd @ DrmIoctlModeCreateDumb => self.ioctl_mode_create_dumb(cmd),
                 cmd @ DrmIoctlModeMapDumb => self.ioctl_mode_map_dumb(cmd),
                 cmd @ DrmIoctlModeDestroyDumb => self.ioctl_mode_destroy_dumb(cmd),
                 cmd @ DrmIoctlModeGetPlaneResources => self.ioctl_mode_get_plane_resources(cmd),
                 cmd @ DrmIoctlModeGetPlane => self.ioctl_mode_get_plane(cmd),
+                cmd @ DrmIoctlModeAddFB2 => self.ioctl_mode_add_fb2(cmd),
                 cmd @ DrmIoctlModeObjectGetProps => self.ioctl_mode_get_object_props(cmd),
                 cmd @ DrmIoctlModeCreatePropBlob => self.ioctl_mode_create_blob(cmd),
                 cmd @ DrmIoctlModeDestroyPropBlob => self.ioctl_mode_destroy_blob(cmd),

@@ -2,7 +2,10 @@
 
 use core::sync::atomic::Ordering;
 
-use aster_drm::{DrmError, DrmGemMapPage, DrmGemObject, DrmIoctlGemCtx};
+use aster_drm::{
+    DRM_FORMAT_MAX_PLANES, DrmDisplayFormat, DrmError, DrmFramebuffer, DrmGemMapPage, DrmGemObject,
+    DrmIoctlGemCtx, DrmKmsObject, DrmKmsObjectType, DrmPlane,
+};
 
 use crate::{
     device::drm::{file::DrmFile, gem::DrmGemShmemObject, ioctl::*},
@@ -101,6 +104,14 @@ impl MappedObject for DrmGemMappedObject {
 }
 
 impl DrmFile {
+    fn lookup_gem(&self, handle: u32) -> Result<Arc<dyn DrmGemObject>> {
+        self.gem_table
+            .lock()
+            .get(&handle)
+            .cloned()
+            .ok_or(Errno::ENONET.into())
+    }
+
     fn next_gem_handle(&self) -> u32 {
         self.next_gem_handle.fetch_add(1, Ordering::SeqCst)
     }
@@ -113,12 +124,7 @@ impl DrmFile {
     }
 
     fn map_gem_handle(&self, handle: u32) -> Result<u64> {
-        let gem_object = self
-            .gem_table
-            .lock()
-            .get(&handle)
-            .cloned()
-            .ok_or(Errno::ENONET)?;
+        let gem_object = self.lookup_gem(handle)?;
 
         let dev = self.device();
         dev.vma_manager().add(&gem_object)?;
@@ -131,6 +137,141 @@ impl DrmFile {
         if let Some(gem_object) = gem_object {
             gem_object.vma_node().revoke(self.file_id);
         }
+    }
+
+    fn create_framebuffer(&self, fb_cmd2: &DrmModeFbCmd2) -> Result<u32> {
+        const DRM_MODE_FB_INTERLACED: u32 = 1 << 0;
+        const DRM_MODE_FB_MODIFIERS: u32 = 1 << 1;
+        const ALLOWED_FB_FLAGS: u32 = DRM_MODE_FB_INTERLACED | DRM_MODE_FB_MODIFIERS;
+
+        if fb_cmd2.width == 0 || fb_cmd2.height == 0 {
+            return_errno!(Errno::EINVAL);
+        }
+
+        if fb_cmd2.width < self.device().caps().min_fb_width_px()
+            || fb_cmd2.width > self.device().caps().max_fb_width_px()
+            || fb_cmd2.height < self.device().caps().min_fb_height_px()
+            || fb_cmd2.height > self.device().caps().max_fb_height_px()
+        {
+            return_errno!(Errno::EINVAL);
+        }
+
+        if fb_cmd2.flags & !ALLOWED_FB_FLAGS != 0 {
+            return_errno!(Errno::EINVAL);
+        }
+
+        if (fb_cmd2.flags & DRM_MODE_FB_MODIFIERS != 0) && !self.device().caps().has_fb_modifiers()
+        {
+            return_errno!(Errno::EOPNOTSUPP);
+        }
+
+        if (fb_cmd2.flags & DRM_MODE_FB_MODIFIERS == 0) && fb_cmd2.modifier[0] != 0 {
+            return_errno!(Errno::EINVAL);
+        }
+
+        // TODO: Support multi-plane framebuffer formats such as YUV/NV12.
+        //
+        // Linux validates each format plane through `drm_format_info::num_planes`
+        // and looks up one GEM object per used plane.
+        // This implementation currently accepts only single-plane formats.
+        //
+        for plane_index in 1..DRM_FORMAT_MAX_PLANES {
+            if fb_cmd2.handles[plane_index] != 0
+                || fb_cmd2.pitches[plane_index] != 0
+                || fb_cmd2.offsets[plane_index] != 0
+                || fb_cmd2.modifier[plane_index] != 0
+            {
+                return_errno!(Errno::EOPNOTSUPP);
+            }
+        }
+
+        let pixel_format = DrmDisplayFormat::try_from(fb_cmd2.pixel_format)
+            .map_err(|_| Error::new(Errno::EINVAL))?;
+
+        let primary_gem = self.lookup_gem(fb_cmd2.handles[0])?;
+        if fb_cmd2.pitches[0] == 0 {
+            return_errno!(Errno::EINVAL);
+        }
+
+        let required_size = (fb_cmd2.pitches[0] as u64)
+            .checked_mul(fb_cmd2.height as u64)
+            .ok_or_else(|| Error::new(Errno::EOVERFLOW))?;
+        let accessible_size = (primary_gem.size() as u64)
+            .checked_sub(fb_cmd2.offsets[0] as u64)
+            .ok_or_else(|| Error::new(Errno::EINVAL))?;
+        if required_size > accessible_size {
+            return_errno!(Errno::EINVAL);
+        }
+
+        let mut gems: [Option<Arc<dyn DrmGemObject>>; DRM_FORMAT_MAX_PLANES] =
+            [None, None, None, None];
+        gems[0] = Some(primary_gem);
+
+        let framebuffer = DrmFramebuffer::new(
+            fb_cmd2.width,
+            fb_cmd2.height,
+            pixel_format,
+            fb_cmd2.flags,
+            fb_cmd2.pitches,
+            fb_cmd2.offsets,
+            fb_cmd2.modifier,
+            gems,
+        )
+        .map_err(|_| Error::new(Errno::EINVAL))?;
+
+        let framebuffer_id = self
+            .device()
+            .kms_objects()
+            .write()
+            .add_object(DrmKmsObject::Framebuffer(framebuffer))
+            .map_err(|_| Error::new(Errno::EINVAL))?;
+        self.framebuffer_ids.lock().push(framebuffer_id);
+
+        Ok(framebuffer_id)
+    }
+
+    pub(super) fn ioctl_mode_add_fb(&self, cmd: DrmIoctlModeAddFB) -> Result<i32> {
+        let mut args = cmd.read()?;
+        let mut fb_cmd2: DrmModeFbCmd2 = args.into();
+        fb_cmd2.fb_id = 0;
+
+        let framebuffer_id = self.create_framebuffer(&fb_cmd2)?;
+        args.fb_id = framebuffer_id;
+
+        cmd.write(&args)?;
+        Ok(0)
+    }
+
+    pub(super) fn ioctl_mode_rm_fb(&self, cmd: DrmIoctlModeRmFB) -> Result<i32> {
+        let framebuffer_id = cmd.read()?;
+
+        {
+            let mut framebuffer_ids = self.framebuffer_ids.lock();
+            let Some(position) = framebuffer_ids
+                .iter()
+                .position(|existing_framebuffer_id| *existing_framebuffer_id == framebuffer_id)
+            else {
+                return_errno!(Errno::ENOENT);
+            };
+            framebuffer_ids.remove(position);
+        }
+
+        let mut objects = self.device().kms_objects().write();
+        let plane_ids = objects.collect_object_ids(DrmKmsObjectType::Plane, None);
+        for plane_id in plane_ids {
+            let Some(plane) = objects.get_object::<DrmPlane>(plane_id) else {
+                continue;
+            };
+
+            if plane.snapshot().fb_id() == Some(framebuffer_id) {
+                plane.set_fb_id(None);
+            }
+        }
+        objects
+            .remove_framebuffer(framebuffer_id)
+            .ok_or(Errno::ENOENT)?;
+
+        Ok(0)
     }
 
     pub(super) fn ioctl_mode_create_dumb(&self, cmd: DrmIoctlModeCreateDumb) -> Result<i32> {
@@ -176,6 +317,17 @@ impl DrmFile {
         let args = cmd.read()?;
         self.remove_gem_object(args.handle);
 
+        Ok(0)
+    }
+
+    pub(super) fn ioctl_mode_add_fb2(&self, cmd: DrmIoctlModeAddFB2) -> Result<i32> {
+        let mut args = cmd.read()?;
+        args.fb_id = 0;
+
+        let framebuffer_id = self.create_framebuffer(&args)?;
+        args.fb_id = framebuffer_id;
+
+        cmd.write(&args)?;
         Ok(0)
     }
 }

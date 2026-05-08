@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::sync::Arc;
 use core::{any::Any, fmt::Debug};
 
-use alloc::sync::Arc;
 use ostd::{
     io::IoMem,
     mm::{UFrame, VmReader, VmWriter},

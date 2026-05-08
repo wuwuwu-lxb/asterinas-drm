@@ -253,3 +253,23 @@ pub enum DrmDisplayFormat {
     XRGB2101010 = fourcc_code(b'X', b'R', b'3', b'0'),
     Unknown = fourcc_code(b' ', b' ', b' ', b' '),
 }
+
+impl TryFrom<u32> for DrmDisplayFormat {
+    type Error = crate::DrmError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            x if x == Self::XRGB8888 as u32 => Ok(Self::XRGB8888),
+            x if x == Self::ARGB8888 as u32 => Ok(Self::ARGB8888),
+            x if x == Self::XBGR8888 as u32 => Ok(Self::XBGR8888),
+            x if x == Self::RGBX8888 as u32 => Ok(Self::RGBX8888),
+            x if x == Self::BGRX8888 as u32 => Ok(Self::BGRX8888),
+            x if x == Self::C8 as u32 => Ok(Self::C8),
+            x if x == Self::XRGB1555 as u32 => Ok(Self::XRGB1555),
+            x if x == Self::RGB565 as u32 => Ok(Self::RGB565),
+            x if x == Self::RGB888 as u32 => Ok(Self::RGB888),
+            x if x == Self::XRGB2101010 as u32 => Ok(Self::XRGB2101010),
+            _ => Err(crate::DrmError::Invalid),
+        }
+    }
+}

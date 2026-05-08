@@ -14,6 +14,7 @@ use crate::{
         connector::DrmConnector,
         crtc::DrmCrtc,
         encoder::DrmEncoder,
+        framebuffer::DrmFramebuffer,
         plane::DrmPlane,
         property::{DrmProperty, blob::DrmPropertyBlob},
     },
@@ -24,6 +25,7 @@ pub mod connector;
 pub mod crtc;
 pub mod display;
 pub mod encoder;
+pub mod framebuffer;
 pub mod geometry;
 pub mod plane;
 pub mod property;
@@ -43,6 +45,7 @@ pub enum DrmKmsObject {
     Connector(DrmConnector),
     Property(DrmProperty),
     Blob(DrmPropertyBlob),
+    Framebuffer(DrmFramebuffer),
 }
 
 #[repr(u32)]
@@ -95,6 +98,7 @@ pub struct DrmKmsObjectStore {
     crtc_ids: Vec<KmsObjectId>,
     encoder_ids: Vec<KmsObjectId>,
     connector_ids: Vec<KmsObjectId>,
+    framebuffer_ids: Vec<KmsObjectId>,
     object_by_id: HashMap<KmsObjectId, DrmKmsObject>,
     next_object_id: AtomicU32,
 }
@@ -106,6 +110,7 @@ impl DrmKmsObjectStore {
             crtc_ids: Vec::new(),
             encoder_ids: Vec::new(),
             connector_ids: Vec::new(),
+            framebuffer_ids: Vec::new(),
             object_by_id: HashMap::new(),
             next_object_id: AtomicU32::new(1),
         }
@@ -125,6 +130,7 @@ impl DrmKmsObjectStore {
             DrmKmsObjectType::Connector => &self.connector_ids,
             DrmKmsObjectType::Encoder => &self.encoder_ids,
             DrmKmsObjectType::Plane => &self.plane_ids,
+            DrmKmsObjectType::Framebuffer => &self.framebuffer_ids,
             _ => &[],
         };
 
@@ -146,6 +152,7 @@ impl DrmKmsObjectStore {
             DrmKmsObject::Crtc(_) => self.crtc_ids.push(id),
             DrmKmsObject::Encoder(_) => self.encoder_ids.push(id),
             DrmKmsObject::Connector(_) => self.connector_ids.push(id),
+            DrmKmsObject::Framebuffer(_) => self.framebuffer_ids.push(id),
             _ => {}
         }
 
@@ -163,6 +170,7 @@ impl DrmKmsObjectStore {
             DrmKmsObjectType::Connector => self.connector_ids.get(index).copied(),
             DrmKmsObjectType::Encoder => self.encoder_ids.get(index).copied(),
             DrmKmsObjectType::Plane => self.plane_ids.get(index).copied(),
+            DrmKmsObjectType::Framebuffer => self.framebuffer_ids.get(index).copied(),
             _ => None,
         }
     }
@@ -206,6 +214,23 @@ impl DrmKmsObjectStore {
 
         match self.object_by_id.remove(&id) {
             Some(DrmKmsObject::Blob(blob)) => Some(blob),
+            _ => None,
+        }
+    }
+
+    pub fn remove_framebuffer(&mut self, id: KmsObjectId) -> Option<DrmFramebuffer> {
+        if !matches!(
+            self.object_by_id.get(&id),
+            Some(DrmKmsObject::Framebuffer(_))
+        ) {
+            return None;
+        }
+
+        self.framebuffer_ids
+            .retain(|framebuffer_id| *framebuffer_id != id);
+
+        match self.object_by_id.remove(&id) {
+            Some(DrmKmsObject::Framebuffer(framebuffer)) => Some(framebuffer),
             _ => None,
         }
     }

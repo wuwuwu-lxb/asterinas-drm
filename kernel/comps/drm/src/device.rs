@@ -2,7 +2,11 @@
 
 use core::fmt::Debug;
 
-use crate::{DrmError, gem::{DrmGemOps, vma_manager::DrmVmaOffsetManager}, kms::DrmKmsOps};
+use crate::{
+    DrmError,
+    gem::{DrmGemOps, vma_manager::DrmVmaOffsetManager},
+    kms::DrmKmsOps,
+};
 
 bitflags::bitflags! {
     pub struct DrmFeatures: u32 {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use aster_drm::{DRM_PROP_NAME_LEN, DrmModeModeInfo};
+use aster_drm::{DRM_PROP_NAME_LEN, DrmDisplayFormat, DrmModeModeInfo};
 use int_to_c_enum::TryFromInt;
 
 #[repr(C)]
@@ -170,6 +170,18 @@ pub struct DrmModeGetBlob {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeFbCmd {
+    pub fb_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub bpp: u32,
+    pub depth: u32,
+    pub handle: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmModeCreateDumb {
     pub height: u32,
     pub width: u32,
@@ -212,6 +224,57 @@ pub struct DrmModeGetPlane {
     pub gamma_size: u32,
     pub count_format_types: u32,
     pub format_type_ptr: u64,
+}
+
+#[repr(C)]
+#[padding_struct]
+#[derive(Debug, Clone, Copy, Pod, Default)]
+pub struct DrmModeFbCmd2 {
+    pub fb_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub pixel_format: u32,
+    pub flags: u32,
+    pub handles: [u32; 4],
+    pub pitches: [u32; 4],
+    pub offsets: [u32; 4],
+    pub modifier: [u64; 4],
+}
+
+impl From<DrmModeFbCmd> for DrmModeFbCmd2 {
+    fn from(fb_cmd: DrmModeFbCmd) -> Self {
+        let pixel_format = match (fb_cmd.bpp, fb_cmd.depth) {
+            (8, 8) => DrmDisplayFormat::C8 as u32,
+            (16, 15) => DrmDisplayFormat::XRGB1555 as u32,
+            (16, 16) => DrmDisplayFormat::RGB565 as u32,
+            (24, 24) => DrmDisplayFormat::RGB888 as u32,
+            (32, 24) => DrmDisplayFormat::XRGB8888 as u32,
+            (32, 30) => DrmDisplayFormat::XRGB2101010 as u32,
+            (32, 32) => DrmDisplayFormat::ARGB8888 as u32,
+            _ => DrmDisplayFormat::Unknown as u32,
+        };
+
+        let mut handles = [0u32; 4];
+        let mut pitches = [0u32; 4];
+        let offsets = [0u32; 4];
+        let modifier = [0u64; 4];
+
+        handles[0] = fb_cmd.handle;
+        pitches[0] = fb_cmd.pitch;
+
+        Self {
+            fb_id: fb_cmd.fb_id,
+            width: fb_cmd.width,
+            height: fb_cmd.height,
+            pixel_format,
+            flags: 0,
+            handles,
+            pitches,
+            offsets,
+            modifier,
+            ..Default::default()
+        }
+    }
 }
 
 #[repr(C)]
