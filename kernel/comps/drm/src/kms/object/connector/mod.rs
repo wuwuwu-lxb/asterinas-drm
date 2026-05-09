@@ -8,10 +8,7 @@ use ostd::sync::Mutex;
 use crate::{
     DrmError,
     kms::object::{
-        DrmKmsObject,
-        DrmKmsObjectCast,
-        KmsObjectId,
-        KmsObjectIndex,
+        DrmKmsObject, DrmKmsObjectCast, KmsObjectId, KmsObjectIndex,
         display::{DrmDisplayInfo, DrmDisplayMode},
         property::DrmKmsObjectProp,
     },

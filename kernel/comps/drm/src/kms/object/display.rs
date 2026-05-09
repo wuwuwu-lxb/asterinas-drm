@@ -116,6 +116,14 @@ impl DrmDisplayMode {
 
         ((num * 1000 + den / 2) / den) as u32
     }
+
+    pub fn hdisplay(&self) -> u16 {
+        self.hdisplay
+    }
+
+    pub fn vdisplay(&self) -> u16 {
+        self.vdisplay
+    }
 }
 
 impl Into<DrmModeModeInfo> for DrmDisplayMode {
@@ -252,6 +260,23 @@ pub enum DrmDisplayFormat {
     RGB888 = fourcc_code(b'R', b'G', b'2', b'4'),
     XRGB2101010 = fourcc_code(b'X', b'R', b'3', b'0'),
     Unknown = fourcc_code(b' ', b' ', b' ', b' '),
+}
+
+impl DrmDisplayFormat {
+    pub fn bytes_per_pixel(&self) -> Option<usize> {
+        match self {
+            Self::C8 => Some(1),
+            Self::XRGB1555 | Self::RGB565 => Some(2),
+            Self::RGB888 => Some(3),
+            Self::XRGB8888
+            | Self::ARGB8888
+            | Self::XBGR8888
+            | Self::RGBX8888
+            | Self::BGRX8888
+            | Self::XRGB2101010 => Some(4),
+            Self::Unknown => None,
+        }
+    }
 }
 
 impl TryFrom<u32> for DrmDisplayFormat {

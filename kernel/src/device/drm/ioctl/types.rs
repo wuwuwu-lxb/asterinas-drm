@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use aster_drm::{DRM_PROP_NAME_LEN, DrmDisplayFormat, DrmModeModeInfo};
+use aster_drm::{DRM_FORMAT_MAX_PLANES, DRM_PROP_NAME_LEN, DrmDisplayFormat, DrmModeModeInfo};
 use int_to_c_enum::TryFromInt;
 
 #[repr(C)]
@@ -235,10 +235,10 @@ pub struct DrmModeFbCmd2 {
     pub height: u32,
     pub pixel_format: u32,
     pub flags: u32,
-    pub handles: [u32; 4],
-    pub pitches: [u32; 4],
-    pub offsets: [u32; 4],
-    pub modifier: [u64; 4],
+    pub handles: [u32; DRM_FORMAT_MAX_PLANES],
+    pub pitches: [u32; DRM_FORMAT_MAX_PLANES],
+    pub offsets: [u32; DRM_FORMAT_MAX_PLANES],
+    pub modifier: [u64; DRM_FORMAT_MAX_PLANES],
 }
 
 impl From<DrmModeFbCmd> for DrmModeFbCmd2 {

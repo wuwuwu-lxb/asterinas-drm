@@ -455,6 +455,7 @@ impl FileIo for DrmFile {
                 }
                 cmd @ DrmIoctlModeGetResources => self.ioctl_mode_get_resources(cmd),
                 cmd @ DrmIoctlModeGetCrtc => self.ioctl_mode_get_crtc(cmd),
+                cmd @ DrmIoctlModeSetCrtc => self.ioctl_mode_set_crtc(cmd),
                 cmd @ DrmIoctlModeGetEncoder => self.ioctl_mode_get_encoder(cmd),
                 cmd @ DrmIoctlModeGetConnector => self.ioctl_mode_get_connector(cmd),
                 cmd @ DrmIoctlModeGetProperty => self.ioctl_mode_get_property(cmd),

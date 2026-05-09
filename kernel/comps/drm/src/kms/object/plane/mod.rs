@@ -115,6 +115,14 @@ impl DrmPlane {
         &self.format_types
     }
 
+    pub fn set_src_rect(&self, rect: RectU32) {
+        self.state.lock().src_rect_px = rect;
+    }
+
+    pub fn set_crtc_rect(&self, rect: RectU32) {
+        self.state.lock().crtc_rect_px = rect;
+    }
+
     pub fn set_crtc_id(&self, crtc_id: Option<KmsObjectId>) {
         self.state.lock().crtc_id = crtc_id;
     }

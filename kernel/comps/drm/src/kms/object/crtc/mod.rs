@@ -93,8 +93,12 @@ impl DrmCrtc {
         self.cursor_plane_id
     }
 
-    pub fn set_display_mode(&self, display_mode: DrmDisplayMode) {
-        self.state().lock().display_mode = Some(display_mode);
+    pub fn set_display_mode(&self, display_mode: Option<DrmDisplayMode>) {
+        self.state().lock().display_mode = display_mode;
+    }
+
+    pub fn set_enable(&self, enable: bool) {
+        self.state().lock().enable = enable;
     }
 
     pub fn set_active(&self, active: bool) {

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::vec::Vec;
 use core::fmt::Debug;
 
 use ostd::sync::RwLock;
 
 use crate::{
     DrmError,
-    kms::object::{DrmKmsObjectStore, KmsObjectId},
+    kms::object::{DrmKmsObjectStore, KmsObjectId, display::DrmDisplayMode},
 };
 
 pub mod object;
@@ -33,4 +34,19 @@ pub mod object;
 pub trait DrmKmsOps: Debug + Send + Sync {
     fn kms_objects(&self) -> &RwLock<DrmKmsObjectStore>;
     fn update_connector_state(&self, conn_id: KmsObjectId) -> Result<(), DrmError>;
+
+    /// Applies a legacy CRTC configuration.
+    ///
+    /// `None` for `display_mode` disables the CRTC. Enabling a CRTC requires
+    /// one mode, one framebuffer, and the connector set driven by that mode.
+    /// `x` and `y` are the framebuffer-space origin of the scanout rectangle.
+    fn set_crtc(
+        &self,
+        crtc_id: KmsObjectId,
+        fb_id: KmsObjectId,
+        x: u32,
+        y: u32,
+        display_mode: Option<DrmDisplayMode>,
+        connector_ids: Vec<KmsObjectId>,
+    ) -> Result<(), DrmError>;
 }

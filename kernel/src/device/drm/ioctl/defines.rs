@@ -55,6 +55,13 @@ drm_ioc!(
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(
+    DrmIoctlModeSetCrtc,
+    DRM_IOCTL_MODE_SETCRTC,
+    0xa2,
+    InOutData<DrmModeCrtc>,
+    DrmIoctlFlags::MODESET.union(DrmIoctlFlags::MASTER)
+);
+drm_ioc!(
     DrmIoctlModeGetEncoder,
     DRM_IOCTL_MODE_GETENCODER,
     0xa6,

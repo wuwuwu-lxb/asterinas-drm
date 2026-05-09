@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::vec::Vec;
-use core::sync::atomic::Ordering;
+use core::{mem, sync::atomic::Ordering};
 
 use aster_drm::{
     DrmConnector, DrmCrtc, DrmEncoder, DrmKmsObject, DrmKmsObjectProp, DrmKmsObjectType,
@@ -131,6 +131,56 @@ impl DrmFile {
         }
 
         cmd.write(&args)?;
+        Ok(0)
+    }
+
+    pub(super) fn ioctl_mode_set_crtc(&self, cmd: DrmIoctlModeSetCrtc) -> Result<i32> {
+        let args: DrmModeCrtc = cmd.read()?;
+        let display_mode = (args.mode_valid != 0).then(|| args.mode.into());
+
+        if display_mode.is_none() && args.count_connectors != 0 {
+            return_errno!(Errno::EINVAL);
+        }
+
+        if display_mode.is_some() {
+            if args.count_connectors == 0 || args.fb_id == 0 {
+                return_errno!(Errno::EINVAL);
+            }
+        }
+
+        cmd.with_data_ptr(|args_ptr| {
+            let mut connector_ids = Vec::with_capacity(args.count_connectors as usize);
+
+            if args.count_connectors != 0 {
+                if args.set_connectors_ptr == 0 {
+                    return_errno!(Errno::EINVAL);
+                }
+
+                for index in 0..args.count_connectors as usize {
+                    let address = (args.set_connectors_ptr as usize)
+                        .checked_add(
+                            index
+                                .checked_mul(mem::size_of::<u32>())
+                                .ok_or(Errno::EOVERFLOW)?,
+                        )
+                        .ok_or(Errno::EOVERFLOW)?;
+                    let connector_id = args_ptr.vm().read_val::<u32>(address)?;
+                    connector_ids.push(connector_id);
+                }
+            }
+
+            self.device().set_crtc(
+                args.crtc_id,
+                args.fb_id,
+                args.x,
+                args.y,
+                display_mode,
+                connector_ids,
+            )?;
+
+            Ok(())
+        })?;
+
         Ok(0)
     }
 
