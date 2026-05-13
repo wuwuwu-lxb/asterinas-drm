@@ -41,6 +41,13 @@ drm_ioc!(
     DrmIoctlFlags::DEFAULT
 );
 drm_ioc!(
+    DrmIoctlWaitVblank,
+    DRM_IOCTL_WAIT_VBLANK,
+    0x3a,
+    InOutData<DrmWaitVblank>,
+    DrmIoctlFlags::DEFAULT
+);
+drm_ioc!(
     DrmIoctlModeGetResources,
     DRM_IOCTL_MODE_GETRESOURCES,
     0xa0,

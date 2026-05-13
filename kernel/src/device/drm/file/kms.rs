@@ -4,16 +4,56 @@ use alloc::vec::Vec;
 use core::{mem, sync::atomic::Ordering};
 
 use aster_drm::{
-    DrmConnector, DrmCrtc, DrmEncoder, DrmKmsObject, DrmKmsObjectProp, DrmKmsObjectType,
-    DrmModeModeInfo, DrmPlane, DrmProperty, DrmPropertyBlob, DrmPropertyFlags, DrmPropertyKind,
+    DrmConnector, DrmCrtc, DrmEncoder, DrmIoctlEventCtx, DrmKmsObject, DrmKmsObjectProp,
+    DrmKmsObjectType, DrmModeModeInfo, DrmPendingVblankEvent, DrmPlane, DrmProperty,
+    DrmPropertyBlob, DrmPropertyFlags, DrmPropertyKind,
 };
 use ostd::mm::VmIo;
 
 use super::DrmFile;
 use crate::{
     device::drm::{file::copy_array_to_user, ioctl::*},
+    events::IoEvents,
     prelude::*,
+    process::signal::Pollee,
 };
+
+pub(super) struct DrmFileEvent {
+    pollee: Pollee,
+    queue: Mutex<VecDeque<Vec<u8>>>,
+}
+
+impl DrmFileEvent {
+    pub(super) fn new() -> Self {
+        Self {
+            pollee: Pollee::new(),
+            queue: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    pub(super) fn pollee(&self) -> &Pollee {
+        &self.pollee
+    }
+
+    pub(super) fn queue(&self) -> &Mutex<VecDeque<Vec<u8>>> {
+        &self.queue
+    }
+}
+
+impl Debug for DrmFileEvent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DrmFileEventCallback")
+            .field("event_count", &self.queue.lock().len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl DrmIoctlEventCtx for DrmFileEvent {
+    fn vblank_event_callback(&self, bytes: &[u8]) {
+        self.queue.lock().push_back(bytes.to_vec());
+        self.pollee.notify(IoEvents::IN);
+    }
+}
 
 impl DrmFile {
     fn visible_property_values(
@@ -37,6 +77,85 @@ impl DrmFile {
         }
 
         Ok((prop_ids, prop_values))
+    }
+
+    pub(super) fn ioctl_wait_vblank(&self, cmd: DrmIoctlWaitVblank) -> Result<i32> {
+        bitflags::bitflags! {
+            pub struct DrmWaitVblankFlags: u32 {
+                // ABSOLUTE is encoded as zero. If RELATIVE is absent, the request is absolute.
+                const RELATIVE       = 0x0000_0001;
+                const HIGH_CRTC_MASK = 0x0000_003e;
+                const EVENT          = 0x0400_0000;
+                const FLIP           = 0x0800_0000;
+                const NEXT_ON_MISS   = 0x1000_0000;
+                const SECONDARY      = 0x2000_0000;
+                const SIGNAL         = 0x4000_0000;
+            }
+        }
+
+        let mut args = cmd.read()?;
+
+        let flags = DrmWaitVblankFlags::from_bits(args.type_).ok_or(Errno::EINVAL)?;
+        let high_crtc_bits = args.type_ & DrmWaitVblankFlags::HIGH_CRTC_MASK.bits();
+        let pipe_index = if high_crtc_bits != 0 {
+            high_crtc_bits >> 1
+        } else if flags.contains(DrmWaitVblankFlags::SECONDARY) {
+            1
+        } else {
+            0
+        };
+
+        let crtc_id = {
+            let objects = self.device().kms_objects().read();
+            objects
+                .get_object_id_from_index(pipe_index as usize, DrmKmsObjectType::Crtc)
+                .ok_or(Errno::ENOENT)?
+        };
+
+        let target_sequence = if flags.contains(DrmWaitVblankFlags::RELATIVE) {
+            let objects = self.device().kms_objects().read();
+            let crtc = objects
+                .get_object::<DrmCrtc>(crtc_id)
+                .ok_or(Errno::ENOENT)?;
+
+            let current = crtc.vblank_sequence();
+            current
+                .checked_add(args.sequence)
+                .ok_or(Errno::EOVERFLOW)?
+        } else {
+            args.sequence
+        };
+
+        if flags.contains(DrmWaitVblankFlags::EVENT) {
+            let event = DrmPendingVblankEvent::new_vblank(
+                target_sequence,
+                args.request_signal(),
+                crtc_id,
+                self.events.clone(),
+            );
+
+            let objects = self.device().kms_objects().read();
+            let crtc = objects
+                .get_object::<DrmCrtc>(crtc_id)
+                .ok_or(Errno::ENOENT)?;
+            crtc.queue_vblank_event(event);
+
+            args.set_reply(target_sequence as u32, 0, 0);
+        } else {
+            let objects = self.device().kms_objects().read();
+            let crtc = objects
+                .get_object::<DrmCrtc>(crtc_id)
+                .ok_or(Errno::ENOENT)?;
+            let (done_sequence, last_time) = crtc.wait_vblank(target_sequence);
+            args.set_reply(
+                done_sequence as u32,
+                last_time.as_secs() as i64,
+                last_time.subsec_micros() as i64,
+            );
+        }
+
+        cmd.write(&args)?;
+        Ok(0)
     }
 
     pub(super) fn ioctl_mode_get_resources(&self, cmd: DrmIoctlModeGetResources) -> Result<i32> {

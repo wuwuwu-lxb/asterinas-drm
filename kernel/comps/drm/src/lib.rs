@@ -15,6 +15,7 @@ macro_rules! __log_prefix {
 }
 
 mod device;
+mod event;
 mod gem;
 mod kms;
 mod simpledrm;
@@ -24,6 +25,7 @@ use alloc::{sync::Arc, vec::Vec};
 use aster_framebuffer::FRAMEBUFFER;
 use component::{ComponentInitError, init_component};
 pub use device::{DrmDevice, DrmDeviceCaps, DrmFeatures};
+pub use event::DrmIoctlEventCtx;
 pub use gem::{
     DrmGemOps, DrmIoctlGemCtx,
     object::{DrmGemMapPage, DrmGemObject},
@@ -45,6 +47,7 @@ pub use kms::{
             DrmPropertyKind, DrmPropertySpec, blob::DrmPropertyBlob,
         },
     },
+    vblank::DrmPendingVblankEvent,
 };
 use ostd::sync::Mutex;
 use spin::Once;

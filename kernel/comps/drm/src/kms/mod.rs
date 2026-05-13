@@ -11,6 +11,7 @@ use crate::{
 };
 
 pub mod object;
+pub mod vblank;
 
 /// Provides device-level KMS operations and access to the KMS object store.
 ///

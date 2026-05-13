@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use core::fmt::Debug;
+use core::{fmt::Debug, time::Duration};
 
-use ostd::sync::Mutex;
+use aster_time::read_monotonic_time;
+use ostd::sync::{Mutex, WaitQueue};
 
-use crate::kms::object::{
-    DrmKmsObject, DrmKmsObjectCast, KmsObjectId, display::DrmDisplayMode,
-    property::DrmKmsObjectProp,
+use crate::{
+    DrmError, DrmPendingVblankEvent,
+    kms::{
+        object::{
+            DrmKmsObject, DrmKmsObjectCast, KmsObjectId, display::DrmDisplayMode,
+            property::DrmKmsObjectProp,
+        },
+        vblank::DrmVblankState,
+    },
 };
 
 pub mod property;
@@ -39,13 +46,28 @@ impl DrmCrtcSnapshot {
     }
 }
 
-#[derive(Debug)]
 pub struct DrmCrtc {
     state: Mutex<DrmCrtcState>,
     gamma_size_px: u32,
     primary_plane_id: KmsObjectId,
     cursor_plane_id: Option<KmsObjectId>,
     properties: DrmKmsObjectProp,
+
+    vblank_state: Mutex<DrmVblankState>,
+    vblank_wait_queue: WaitQueue,
+}
+
+impl Debug for DrmCrtc {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DrmCrtc")
+            .field("state", &self.state)
+            .field("gamma_size_px", &self.gamma_size_px)
+            .field("primary_plane_id", &self.primary_plane_id)
+            .field("cursor_plane_id", &self.cursor_plane_id)
+            .field("properties", &self.properties)
+            .field("vblank_state", &self.vblank_state)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DrmCrtc {
@@ -61,6 +83,8 @@ impl DrmCrtc {
             primary_plane_id,
             cursor_plane_id,
             properties,
+            vblank_state: Mutex::new(DrmVblankState::new()),
+            vblank_wait_queue: WaitQueue::new(),
         }
     }
 
@@ -103,6 +127,48 @@ impl DrmCrtc {
 
     pub fn set_active(&self, active: bool) {
         self.state().lock().active = active;
+    }
+
+    pub fn wait_vblank(&self, target_sequence: u64) -> (u64, Duration) {
+        self.vblank_wait_queue.wait_until(|| {
+            let state = self.vblank_state.lock();
+
+            (state.sequence() >= target_sequence)
+                .then_some((state.sequence(), state.last_time().clone()))
+        })
+    }
+
+    pub fn queue_vblank_event(&self, event: DrmPendingVblankEvent) {
+        self.vblank_state.lock().queue_event(event);
+    }
+
+    pub fn vblank_sequence(&self) -> u64 {
+        self.vblank_state.lock().sequence()
+    }
+
+    pub fn handle_vblank(&self) -> Result<(), DrmError> {
+        let timestamp = read_monotonic_time();
+
+        let (sequence, mut ready_events) = {
+            let mut vblank_state = self.vblank_state.lock();
+
+            let sequence = vblank_state.increment();
+            vblank_state.update_time(timestamp);
+            let ready_events = vblank_state.take_pending_events(sequence);
+
+            (sequence, ready_events)
+        };
+
+        self.vblank_wait_queue.wake_all();
+
+        let tv_sec = timestamp.as_secs() as u32;
+        let tv_usec = timestamp.subsec_micros();
+
+        for event in ready_events.iter_mut() {
+            event.send(sequence, tv_sec, tv_usec);
+        }
+
+        Ok(())
     }
 }
 

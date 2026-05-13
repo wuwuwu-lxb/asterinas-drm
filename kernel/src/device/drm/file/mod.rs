@@ -8,7 +8,9 @@ use hashbrown::HashMap;
 use ostd::mm::VmIo;
 
 use crate::{
-    device::drm::{DrmMinorType, has_current_sys_admin, ioctl::*, minor::DrmMinor},
+    device::drm::{
+        DrmMinorType, file::kms::DrmFileEvent, has_current_sys_admin, ioctl::*, minor::DrmMinor,
+    },
     events::IoEvents,
     fs::{
         file::{FileIo, Mappable, StatusFlags},
@@ -17,7 +19,7 @@ use crate::{
     prelude::*,
     process::{
         Process,
-        signal::{PollHandle, Pollable},
+        signal::{PollHandle, Pollable, Poller},
     },
     util::ioctl::RawIoctl,
 };
@@ -95,6 +97,8 @@ pub(super) struct DrmFile {
 
     next_gem_handle: AtomicU32,
     gem_table: Mutex<HashMap<u32, Arc<dyn DrmGemObject>>>,
+
+    events: Arc<DrmFileEvent>,
 }
 
 impl DrmFile {
@@ -117,6 +121,7 @@ impl DrmFile {
             framebuffer_ids: Mutex::new(Vec::new()),
             next_gem_handle: AtomicU32::new(1),
             gem_table: Mutex::new(HashMap::new()),
+            events: Arc::new(DrmFileEvent::new()),
         }
     }
 
@@ -205,9 +210,14 @@ impl Drop for DrmFile {
 }
 
 impl Pollable for DrmFile {
-    fn poll(&self, mask: IoEvents, _poller: Option<&mut PollHandle>) -> IoEvents {
-        let events = IoEvents::IN | IoEvents::OUT;
-        events & mask
+    fn poll(&self, mask: IoEvents, poller: Option<&mut PollHandle>) -> IoEvents {
+        self.events.pollee().poll_with(mask, poller, || {
+            let mut events = IoEvents::OUT;
+            if !self.events.queue().lock().is_empty() {
+                events |= IoEvents::IN;
+            }
+            events
+        })
     }
 }
 
@@ -215,10 +225,60 @@ impl InodeIo for DrmFile {
     fn read_at(
         &self,
         _offset: usize,
-        _writer: &mut VmWriter,
-        _status_flags: StatusFlags,
+        writer: &mut VmWriter,
+        status_flags: StatusFlags,
     ) -> Result<usize> {
-        return_errno_with_message!(Errno::EINVAL, "drm: read not supported");
+        let nonblocking = status_flags.contains(StatusFlags::O_NONBLOCK);
+
+        if nonblocking && self.events.queue().lock().is_empty() {
+            return_errno!(Errno::EAGAIN);
+        }
+
+        if !nonblocking {
+            loop {
+                let mut poller = Poller::new(None);
+                let events =
+                    self.events
+                        .pollee()
+                        .poll_with(IoEvents::IN, Some(poller.as_handle_mut()), || {
+                            if self.events.queue().lock().is_empty() {
+                                IoEvents::empty()
+                            } else {
+                                IoEvents::IN
+                            }
+                        });
+                if events.contains(IoEvents::IN) {
+                    break;
+                }
+
+                poller.wait()?;
+            }
+        }
+
+        let mut queue = self.events.queue().lock();
+
+        let mut total_written = 0usize;
+        while let Some(event) = queue.front() {
+            if event.len() > writer.avail() {
+                if total_written == 0 {
+                    // Linux DRM requires user buffer to fit the next full event.
+                    return_errno!(Errno::EINVAL);
+                }
+                break;
+            }
+
+            let Some(event) = queue.pop_front() else {
+                break;
+            };
+            writer.write_fallible(&mut event.as_slice().into())?;
+            total_written += event.len();
+        }
+
+        if queue.is_empty() {
+            self.events.pollee().invalidate();
+        }
+
+        Ok(total_written)
     }
 
     fn write_at(
@@ -453,6 +513,7 @@ impl FileIo for DrmFile {
                     self.minor.drop_master(self.file_id);
                     Ok(0)
                 }
+                cmd @ DrmIoctlWaitVblank => self.ioctl_wait_vblank(cmd),
                 cmd @ DrmIoctlModeGetResources => self.ioctl_mode_get_resources(cmd),
                 cmd @ DrmIoctlModeGetCrtc => self.ioctl_mode_get_crtc(cmd),
                 cmd @ DrmIoctlModeSetCrtc => self.ioctl_mode_set_crtc(cmd),

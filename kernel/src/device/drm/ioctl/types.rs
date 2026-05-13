@@ -71,6 +71,31 @@ pub struct DrmSetClientCap {
     pub value: u64,
 }
 
+// Linux UAPI defines this as union drm_wait_vblank.
+// This raw layout covers the largest member without using Rust union/unsafe:
+// request: payload0 = signal
+// reply:   payload0 = tval_sec, payload1 = tval_usec
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmWaitVblank {
+    pub type_: u32,
+    pub sequence: u32,
+    pub payload0: u64,
+    pub payload1: u64,
+}
+
+impl DrmWaitVblank {
+    pub fn request_signal(&self) -> u64 {
+        self.payload0
+    }
+
+    pub fn set_reply(&mut self, sequence: u32, tv_sec: i64, tv_usec: i64) {
+        self.sequence = sequence;
+        self.payload0 = tv_sec as u64;
+        self.payload1 = tv_usec as u64;
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmModeGetResources {
