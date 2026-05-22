@@ -14,6 +14,7 @@ use crate::{
     },
 };
 
+pub mod helper;
 pub mod property;
 
 #[repr(u32)]
@@ -65,6 +66,25 @@ pub struct DrmConnState {
     display_modes: Vec<DrmDisplayMode>,
     display_info: DrmDisplayInfo,
     encoder_id: Option<KmsObjectId>,
+}
+
+impl DrmConnState {
+    pub fn set_current_encoder_id(&mut self, encoder_id: Option<KmsObjectId>) {
+        self.encoder_id = encoder_id;
+    }
+
+    pub fn set_display_state(
+        &mut self,
+        status: DrmConnStatus,
+        display_modes: Vec<DrmDisplayMode>,
+        display_info: DrmDisplayInfo,
+        encoder_id: Option<KmsObjectId>,
+    ) {
+        self.status = status;
+        self.display_modes = display_modes;
+        self.display_info = display_info;
+        self.encoder_id = encoder_id;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +186,7 @@ impl DrmConnector {
     }
 
     pub fn set_current_encoder_id(&self, encoder_id: Option<KmsObjectId>) {
-        self.state.lock().encoder_id = encoder_id;
+        self.state.lock().set_current_encoder_id(encoder_id);
     }
 
     pub fn set_display_state(
@@ -176,11 +196,9 @@ impl DrmConnector {
         display_info: DrmDisplayInfo,
         encoder_id: Option<KmsObjectId>,
     ) -> Result<(), DrmError> {
-        let mut state = self.state.lock();
-        state.status = status;
-        state.display_modes = display_modes;
-        state.display_info = display_info;
-        state.encoder_id = encoder_id;
+        self.state
+            .lock()
+            .set_display_state(status, display_modes, display_info, encoder_id);
 
         Ok(())
     }

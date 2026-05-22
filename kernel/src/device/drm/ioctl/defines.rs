@@ -160,6 +160,15 @@ drm_ioc!(
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(
+    DrmIoctlModeAtomic,
+    DRM_IOCTL_MODE_ATOMIC,
+    0xbc,
+    InOutData<DrmModeAtomic>,
+    DrmIoctlFlags::MODESET
+        .union(DrmIoctlFlags::MASTER)
+        .union(DrmIoctlFlags::ATOMIC)
+);
+drm_ioc!(
     DrmIoctlModeCreatePropBlob,
     DRM_IOCTL_MODE_CREATEPROPBLOB,
     0xbd,

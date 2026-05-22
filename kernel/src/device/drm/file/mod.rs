@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use core::{
+    mem,
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+};
 
 use aster_drm::{DrmDevice, DrmFeatures, DrmGemObject};
 use hashbrown::HashMap;
@@ -24,6 +27,7 @@ use crate::{
     util::ioctl::RawIoctl,
 };
 
+mod atomic;
 mod gem;
 mod kms;
 
@@ -237,16 +241,17 @@ impl InodeIo for DrmFile {
         if !nonblocking {
             loop {
                 let mut poller = Poller::new(None);
-                let events =
-                    self.events
-                        .pollee()
-                        .poll_with(IoEvents::IN, Some(poller.as_handle_mut()), || {
-                            if self.events.queue().lock().is_empty() {
-                                IoEvents::empty()
-                            } else {
-                                IoEvents::IN
-                            }
-                        });
+                let events = self.events.pollee().poll_with(
+                    IoEvents::IN,
+                    Some(poller.as_handle_mut()),
+                    || {
+                        if self.events.queue().lock().is_empty() {
+                            IoEvents::empty()
+                        } else {
+                            IoEvents::IN
+                        }
+                    },
+                );
                 if events.contains(IoEvents::IN) {
                     break;
                 }
@@ -530,6 +535,7 @@ impl FileIo for DrmFile {
                 cmd @ DrmIoctlModeGetPlane => self.ioctl_mode_get_plane(cmd),
                 cmd @ DrmIoctlModeAddFB2 => self.ioctl_mode_add_fb2(cmd),
                 cmd @ DrmIoctlModeObjectGetProps => self.ioctl_mode_get_object_props(cmd),
+                cmd @ DrmIoctlModeAtomic => self.ioctl_mode_atomic(cmd),
                 cmd @ DrmIoctlModeCreatePropBlob => self.ioctl_mode_create_blob(cmd),
                 cmd @ DrmIoctlModeDestroyPropBlob => self.ioctl_mode_destroy_blob(cmd),
                 _ => {
@@ -561,4 +567,33 @@ fn copy_array_to_user<T: Pod>(
         vm.write_slice(user_ptr as usize, &values[..copied as usize])?;
     }
     Ok(())
+}
+
+fn copy_array_from_user<T: Pod>(vm: &impl VmIo, user_ptr: u64, count: u32) -> Result<Vec<T>> {
+    let count = count as usize;
+    let mut values = Vec::with_capacity(count);
+
+    for index in 0..count {
+        let offset = index
+            .checked_mul(mem::size_of::<T>())
+            .ok_or(Errno::EOVERFLOW)?;
+        let address = (user_ptr as usize)
+            .checked_add(offset)
+            .ok_or(Errno::EOVERFLOW)?;
+
+        values.push(vm.read_val::<T>(address)?);
+    }
+
+    Ok(values)
+}
+
+fn user_array_ptr_at<T>(user_ptr: u64, index: usize) -> Result<u64> {
+    let offset = index
+        .checked_mul(core::mem::size_of::<T>())
+        .ok_or(Errno::EOVERFLOW)?;
+    let address = (user_ptr as usize)
+        .checked_add(offset)
+        .ok_or(Errno::EOVERFLOW)?;
+
+    Ok(address as u64)
 }

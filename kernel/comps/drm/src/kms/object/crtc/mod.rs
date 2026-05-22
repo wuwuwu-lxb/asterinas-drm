@@ -16,6 +16,7 @@ use crate::{
     },
 };
 
+pub mod helper;
 pub mod property;
 
 #[derive(Debug, Default)]
@@ -23,6 +24,20 @@ pub struct DrmCrtcState {
     display_mode: Option<DrmDisplayMode>,
     enable: bool,
     active: bool,
+}
+
+impl DrmCrtcState {
+    pub fn set_display_mode(&mut self, display_mode: Option<DrmDisplayMode>) {
+        self.display_mode = display_mode;
+    }
+
+    pub fn set_enable(&mut self, enable: bool) {
+        self.enable = enable;
+    }
+
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -118,18 +133,18 @@ impl DrmCrtc {
     }
 
     pub fn set_display_mode(&self, display_mode: Option<DrmDisplayMode>) {
-        self.state().lock().display_mode = display_mode;
+        self.state().lock().set_display_mode(display_mode);
     }
 
     pub fn set_enable(&self, enable: bool) {
-        self.state().lock().enable = enable;
+        self.state().lock().set_enable(enable);
     }
 
     pub fn set_active(&self, active: bool) {
-        self.state().lock().active = active;
+        self.state().lock().set_active(active);
     }
 
-    pub fn wait_vblank(&self, target_sequence: u64) -> (u64, Duration) {
+    pub fn wait_vblank(&self, target_sequence: u32) -> (u32, Duration) {
         self.vblank_wait_queue.wait_until(|| {
             let state = self.vblank_state.lock();
 
@@ -142,7 +157,7 @@ impl DrmCrtc {
         self.vblank_state.lock().queue_event(event);
     }
 
-    pub fn vblank_sequence(&self) -> u64 {
+    pub fn vblank_sequence(&self) -> u32 {
         self.vblank_state.lock().sequence()
     }
 

@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use core::mem;
+
+use ostd_pod::Pod;
+
+use crate::{DrmError, DrmPropertyBlob};
+
 const DRM_DISPLAY_MODE_LEN: usize = 32;
 const DRM_DEFAULT_VREFRESH_HZ: u32 = 60;
 
@@ -34,7 +40,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DrmDisplayMode {
     clock: u32,
     hdisplay: u16,
@@ -123,6 +129,15 @@ impl DrmDisplayMode {
 
     pub fn vdisplay(&self) -> u16 {
         self.vdisplay
+    }
+
+    pub fn from_blob(blob: &DrmPropertyBlob) -> Result<Self, DrmError> {
+        let data = blob.data();
+        if data.len() != mem::size_of::<DrmModeModeInfo>() {
+            return Err(DrmError::Invalid);
+        }
+
+        Ok(DrmModeModeInfo::from_bytes(&data).into())
     }
 }
 
@@ -247,7 +262,7 @@ const fn fourcc_code(a: u8, b: u8, c: u8, d: u8) -> u32 {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrmDisplayFormat {
     XRGB8888 = fourcc_code(b'X', b'R', b'2', b'4'),
     ARGB8888 = fourcc_code(b'A', b'R', b'2', b'4'),

@@ -12,25 +12,15 @@ use crate::kms::object::{
 pub enum DrmPlaneProps {
     Type,
     InFormats,
-    #[expect(dead_code)]
     SrcX,
-    #[expect(dead_code)]
     SrcY,
-    #[expect(dead_code)]
     SrcW,
-    #[expect(dead_code)]
     SrcH,
-    #[expect(dead_code)]
     CrtcX,
-    #[expect(dead_code)]
     CrtcY,
-    #[expect(dead_code)]
     CrtcW,
-    #[expect(dead_code)]
     CrtcH,
-    #[expect(dead_code)]
     FbId,
-    #[expect(dead_code)]
     CrtcId,
 }
 

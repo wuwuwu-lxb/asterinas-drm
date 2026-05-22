@@ -6,9 +6,10 @@ use aster_framebuffer::FRAMEBUFFER;
 use ostd::{mm::VmWriter, sync::RwLock};
 
 use crate::{
-    DrmConnStatus, DrmConnType, DrmConnector, DrmDisplayInfo, DrmDisplayMode, DrmEncoder,
+    DrmConnStatus, DrmConnType, DrmConnector, DrmCrtc, DrmDisplayInfo, DrmDisplayMode,
     DrmEncoderType, DrmError, DrmFramebuffer, DrmGemObject, DrmKmsObjectType, DrmPlane,
     DrmPlaneType,
+    atomic::DrmAtomicOps,
     device::{DrmDevice, DrmDeviceCaps, DrmFeatures},
     gem::{DrmGemOps, DrmIoctlGemCtx, vma_manager::DrmVmaOffsetManager},
     kms::{
@@ -17,7 +18,6 @@ use crate::{
             DrmKmsObjectStore, KmsObjectId,
             builder::DrmKmsObjectBuilder,
             display::{DrmDisplayFormat, SubpixelOrder},
-            geometry::RectU32,
         },
     },
 };
@@ -175,126 +175,7 @@ impl DrmKmsOps for SimpleDrmDevice {
         display_mode: Option<DrmDisplayMode>,
         connector_ids: Vec<KmsObjectId>,
     ) -> Result<(), DrmError> {
-        // TODO: Replace this legacy non-atomic `set_crtc` path with a proper
-        // atomic commit flow.
-        //
-        // We already model object-local atomic state, but the current ioctl
-        // path is still not a full atomic transaction. This implementation is
-        // therefore only a temporary compatibility bridge for legacy userspace.
-        //
-        // If display_mode is none, reset the render pipeline.
-        let Some(display_mode) = display_mode else {
-            let objects = self.objects.write();
-            let crtc = objects
-                .get_object::<crate::DrmCrtc>(crtc_id)
-                .ok_or(DrmError::NotFound)?;
-            let primary_plane = objects
-                .get_object::<DrmPlane>(crtc.primary_plane_id())
-                .ok_or(DrmError::NotFound)?;
-
-            primary_plane.set_fb_id(None);
-            primary_plane.set_crtc_id(None);
-            crtc.set_enable(false);
-            crtc.set_active(false);
-            crtc.set_display_mode(None);
-
-            // Simpledrm has only one connector.
-            let connector_id = objects
-                .collect_object_ids(DrmKmsObjectType::Connector, None)
-                .first()
-                .cloned()
-                .ok_or(DrmError::NotFound)?;
-            let connector = objects
-                .get_object::<DrmConnector>(connector_id)
-                .ok_or(DrmError::NotFound)?;
-
-            if let Some(encoder_id) = connector.snapshot().encoder_id() {
-                let encoder = objects
-                    .get_object::<DrmEncoder>(encoder_id)
-                    .ok_or(DrmError::NotFound)?;
-
-                if encoder.crtc_id() == Some(crtc_id) {
-                    connector.set_current_encoder_id(None);
-                    encoder.set_crtc_id(None);
-                }
-            }
-
-            return Ok(());
-        };
-
-        let objects = self.objects.write();
-        let crtc = objects
-            .get_object::<crate::DrmCrtc>(crtc_id)
-            .ok_or(DrmError::NotFound)?;
-        let fb = objects
-            .get_object::<DrmFramebuffer>(fb_id)
-            .ok_or(DrmError::NotFound)?;
-        let primary_plane = objects
-            .get_object::<DrmPlane>(crtc.primary_plane_id())
-            .ok_or(DrmError::NotFound)?;
-
-        if fb.width() < display_mode.hdisplay() as u32
-            || fb.height() < display_mode.vdisplay() as u32
-        {
-            return Err(DrmError::Invalid);
-        }
-
-        // Simpledrm has only one connector.
-        let connector_id = connector_ids.first().ok_or(DrmError::Invalid)?;
-        let connector = objects
-            .get_object::<DrmConnector>(*connector_id)
-            .ok_or(DrmError::NotFound)?;
-        let snapshot = connector.snapshot();
-
-        let encoder_id = snapshot
-            .encoder_id()
-            .or_else(|| {
-                objects
-                    .collect_object_ids(
-                        DrmKmsObjectType::Encoder,
-                        Some(connector.possible_encoders()),
-                    )
-                    .first()
-                    .copied()
-            })
-            .ok_or(DrmError::NotFound)?;
-
-        let encoder = objects
-            .get_object::<DrmEncoder>(encoder_id)
-            .ok_or(DrmError::NotFound)?;
-        if !objects
-            .collect_object_ids(DrmKmsObjectType::Crtc, Some(encoder.possible_crtcs()))
-            .contains(&crtc_id)
-        {
-            return Err(DrmError::Invalid);
-        }
-
-        let src_rect = RectU32::new(
-            x,
-            y,
-            display_mode.vdisplay() as u32,
-            display_mode.hdisplay() as u32,
-        );
-        let crtc_rect = RectU32::new(
-            0,
-            0,
-            display_mode.vdisplay() as u32,
-            display_mode.hdisplay() as u32,
-        );
-
-        connector.set_current_encoder_id(Some(encoder_id));
-        encoder.set_crtc_id(Some(crtc_id));
-        primary_plane.set_src_rect(src_rect);
-        primary_plane.set_crtc_rect(crtc_rect);
-        primary_plane.set_fb_id(Some(fb_id));
-        primary_plane.set_crtc_id(Some(crtc_id));
-        crtc.set_enable(true);
-        crtc.set_active(true);
-        crtc.set_display_mode(Some(display_mode));
-
-        self.write_firmware_fb(fb)?;
-
-        Ok(())
+        self.atomic_set_crtc(crtc_id, fb_id, x, y, display_mode, connector_ids)
     }
 }
 
@@ -309,6 +190,42 @@ impl DrmGemOps for SimpleDrmDevice {
         let pitch = width.checked_mul(bpp / 8).ok_or(DrmError::Invalid)?;
         let size = pitch.checked_mul(height).ok_or(DrmError::Invalid)? as usize;
         ctx.create_shmem_gem(size, pitch)
+    }
+}
+
+impl DrmAtomicOps for SimpleDrmDevice {
+    fn atomic_swap_state(&self) -> Result<(), DrmError> {
+        Ok(())
+    }
+
+    fn atomic_flush(&self, crtc_id: KmsObjectId) -> Result<(), DrmError> {
+        let object = self.kms_objects().read();
+
+        let crtc = object
+            .get_object::<DrmCrtc>(crtc_id)
+            .ok_or(DrmError::NotFound)?;
+        if !crtc.snapshot().active() {
+            return Ok(());
+        }
+
+        let primary = object
+            .get_object::<DrmPlane>(crtc.primary_plane_id())
+            .ok_or(DrmError::NotFound)?;
+        let Some(fb_id) = primary.snapshot().fb_id() else {
+            return Ok(());
+        };
+        let fb = object
+            .get_object::<DrmFramebuffer>(fb_id)
+            .ok_or(DrmError::NotFound)?;
+
+        self.write_firmware_fb(fb)?;
+
+        // TODO: This is a temporary flush-driven fake vblank. Replace it with
+        // a simpledrm fake timer that periodically calls `handle_vblank()` for
+        // active CRTCs.
+        crtc.handle_vblank()?;
+
+        Ok(())
     }
 }
 

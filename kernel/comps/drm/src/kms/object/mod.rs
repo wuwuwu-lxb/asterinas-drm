@@ -48,6 +48,17 @@ pub enum DrmKmsObject {
     Framebuffer(DrmFramebuffer),
 }
 
+impl DrmKmsObject {
+    pub fn properties(&self) -> Result<&DrmKmsObjectProp, DrmError> {
+        match self {
+            DrmKmsObject::Plane(drm_plane) => Ok(drm_plane.properties()),
+            DrmKmsObject::Crtc(drm_crtc) => Ok(drm_crtc.properties()),
+            DrmKmsObject::Connector(drm_connector) => Ok(drm_connector.properties()),
+            _ => Err(DrmError::NotFound),
+        }
+    }
+}
+
 #[repr(u32)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DrmKmsObjectType {
@@ -178,6 +189,10 @@ impl DrmKmsObjectStore {
     pub fn get_object<T: DrmKmsObjectCast>(&self, id: KmsObjectId) -> Option<&T> {
         let obj = self.object_by_id.get(&id)?;
         T::cast(obj)
+    }
+
+    pub fn get_unknow_type_object(&self, id: KmsObjectId) -> Option<&DrmKmsObject> {
+        self.object_by_id.get(&id)
     }
 
     pub fn get_object_props(

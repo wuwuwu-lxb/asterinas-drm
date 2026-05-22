@@ -7,9 +7,9 @@ use hashbrown::HashMap;
 use crate::{
     DrmConnType, DrmEncoderType, DrmError, DrmKmsObjectType, DrmPlaneType,
     kms::object::{
-        DrmKmsObject, DrmKmsObjectStore, KmsObjectIndex,
-        connector::DrmConnector,
-        crtc::DrmCrtc,
+        DrmKmsObject, DrmKmsObjectStore, KmsObjectId, KmsObjectIndex,
+        connector::{DrmConnector, property::DrmConnectorProps},
+        crtc::{DrmCrtc, property::DrmCrtcProps},
         display::DrmDisplayFormat,
         encoder::DrmEncoder,
         plane::{DrmPlane, property::DrmPlaneProps},
@@ -64,6 +64,46 @@ impl PendingPlane {
                     &format_types,
                 )),
             },
+            PendingObjectProp {
+                spec: Box::new(SrcX),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(SrcY),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(SrcW),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(SrcH),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(CrtcX),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(CrtcY),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(CrtcW),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(CrtcH),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(FbId),
+                value: PendingObjectPropValue::Value(0),
+            },
+            PendingObjectProp {
+                spec: Box::new(CrtcId),
+                value: PendingObjectPropValue::Value(0),
+            },
         ];
 
         Self {
@@ -90,7 +130,19 @@ impl PendingCrtc {
         primary_plane: KmsObjectIndex,
         cursor_plane: Option<KmsObjectIndex>,
     ) -> Self {
-        let property_values = vec![];
+        use DrmCrtcProps::*;
+
+        let property_values = vec![
+            PendingObjectProp {
+                spec: Box::new(Active),
+                value: PendingObjectPropValue::Value(0),
+            },
+            // A zero `MODE_ID` means the CRTC has no active mode.
+            PendingObjectProp {
+                spec: Box::new(ModeId),
+                value: PendingObjectPropValue::Value(0),
+            },
+        ];
 
         Self {
             gamma_size_px,
@@ -117,7 +169,12 @@ struct PendingConnector {
 impl PendingConnector {
     // Same design as `PendingPlane::new().
     fn new(type_: DrmConnType) -> Self {
-        let property_values = vec![];
+        use DrmConnectorProps::*;
+
+        let property_values = vec![PendingObjectProp {
+            spec: Box::new(CrtcId),
+            value: PendingObjectPropValue::Value(0),
+        }];
 
         Self {
             type_,
@@ -305,10 +362,14 @@ impl DrmKmsObjectBuilder {
         self.validate_topology()?;
 
         let mut store = DrmKmsObjectStore::new();
+        // Property definitions are global KMS objects. Individual KMS objects
+        // only attach per-object values to these shared property IDs.
+        let mut property_ids = HashMap::<&'static str, KmsObjectId>::new();
         let mut next_type_index_by_connector_type = HashMap::<DrmConnType, u32>::new();
 
         for plane in &self.planes {
-            let property = build_object_properties(&mut store, &plane.property_values)?;
+            let property =
+                build_object_properties(&mut store, &mut property_ids, &plane.property_values)?;
 
             let object = DrmKmsObject::Plane(DrmPlane::new(
                 plane.type_,
@@ -332,7 +393,8 @@ impl DrmKmsObjectBuilder {
                 None => None,
             };
 
-            let property = build_object_properties(&mut store, &crtc.property_values)?;
+            let property =
+                build_object_properties(&mut store, &mut property_ids, &crtc.property_values)?;
 
             let object = DrmKmsObject::Crtc(DrmCrtc::new(
                 crtc.gamma_size_px,
@@ -356,7 +418,8 @@ impl DrmKmsObjectBuilder {
             let type_index = *next_type_index;
             *next_type_index = (*next_type_index).checked_add(1).ok_or(DrmError::Invalid)?;
 
-            let property = build_object_properties(&mut store, &connector.property_values)?;
+            let property =
+                build_object_properties(&mut store, &mut property_ids, &connector.property_values)?;
 
             let object = DrmKmsObject::Connector(DrmConnector::new(
                 connector.type_,
@@ -423,12 +486,14 @@ fn add_or_override_property(
 
 fn build_object_properties(
     store: &mut DrmKmsObjectStore,
+    property_ids: &mut HashMap<&'static str, KmsObjectId>,
     property_values: &[PendingObjectProp],
 ) -> Result<DrmKmsObjectProp, DrmError> {
-    let mut properties = DrmKmsObjectProp::default();
+    let mut object_properties = DrmKmsObjectProp::default();
 
     for pending_property in property_values {
         let property = pending_property.spec.build();
+        let property_name = property.name();
 
         // Blob-typed properties do not store the raw blob payload directly in
         // the object property map. Instead, the payload is first materialized
@@ -442,11 +507,17 @@ fn build_object_properties(
             _ => return Err(DrmError::Invalid),
         };
 
-        properties.add_property(
-            store.add_object(DrmKmsObject::Property(property))?,
-            prop_value,
-        );
+        let property_id = match property_ids.get(property_name).copied() {
+            Some(id) => id,
+            None => {
+                let id = store.add_object(DrmKmsObject::Property(property))?;
+                property_ids.insert(property_name, id);
+                id
+            }
+        };
+
+        object_properties.add_property(property_id, prop_value);
     }
 
-    Ok(properties)
+    Ok(object_properties)
 }

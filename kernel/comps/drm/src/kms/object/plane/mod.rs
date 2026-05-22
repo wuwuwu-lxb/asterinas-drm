@@ -10,6 +10,7 @@ use crate::kms::object::{
     geometry::RectU32, property::DrmKmsObjectProp,
 };
 
+pub mod helper;
 pub mod property;
 
 #[repr(u32)]
@@ -27,6 +28,24 @@ pub struct DrmPlaneState {
 
     fb_id: Option<KmsObjectId>,
     crtc_id: Option<KmsObjectId>,
+}
+
+impl DrmPlaneState {
+    pub fn set_src_rect(&mut self, src_rect: RectU32) {
+        self.src_rect_px = src_rect;
+    }
+
+    pub fn set_crtc_rect(&mut self, crtc_rect: RectU32) {
+        self.crtc_rect_px = crtc_rect;
+    }
+
+    pub fn set_crtc_id(&mut self, crtc_id: Option<KmsObjectId>) {
+        self.crtc_id = crtc_id;
+    }
+
+    pub fn set_fb_id(&mut self, fb_id: Option<KmsObjectId>) {
+        self.fb_id = fb_id;
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -115,20 +134,20 @@ impl DrmPlane {
         &self.format_types
     }
 
-    pub fn set_src_rect(&self, rect: RectU32) {
-        self.state.lock().src_rect_px = rect;
-    }
-
-    pub fn set_crtc_rect(&self, rect: RectU32) {
-        self.state.lock().crtc_rect_px = rect;
-    }
-
     pub fn set_crtc_id(&self, crtc_id: Option<KmsObjectId>) {
-        self.state.lock().crtc_id = crtc_id;
+        self.state.lock().set_crtc_id(crtc_id);
     }
 
     pub fn set_fb_id(&self, fb_id: Option<KmsObjectId>) {
-        self.state.lock().fb_id = fb_id;
+        self.state.lock().set_fb_id(fb_id);
+    }
+
+    pub fn set_src_rect(&self, src_rect: RectU32) {
+        self.state.lock().set_src_rect(src_rect);
+    }
+
+    pub fn set_crtc_rect(&self, crtc_rect: RectU32) {
+        self.state.lock().set_crtc_rect(crtc_rect);
     }
 }
 

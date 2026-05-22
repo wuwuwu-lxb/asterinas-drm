@@ -7,16 +7,22 @@ use crate::kms::object::{
     property::{DrmProperty, DrmPropertyEnum, DrmPropertyFlags, DrmPropertySpec},
 };
 
-#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrmConnectorProps {
+    #[expect(dead_code)]
     Edid,
+    #[expect(dead_code)]
     Path,
+    #[expect(dead_code)]
     HdrOutputMetadata,
     CrtcId,
+    #[expect(dead_code)]
     Dpms,
+    #[expect(dead_code)]
     LinkStatus,
+    #[expect(dead_code)]
     NonDesktop,
+    #[expect(dead_code)]
     Tile,
 }
 

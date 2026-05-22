@@ -4,6 +4,7 @@ use core::fmt::Debug;
 
 use crate::{
     DrmError,
+    atomic::DrmAtomicOps,
     gem::{DrmGemOps, vma_manager::DrmVmaOffsetManager},
     kms::DrmKmsOps,
 };
@@ -36,7 +37,7 @@ bitflags::bitflags! {
 /// while higher-level DRM operations are expected to be layered as
 /// dedicated operation traits.
 ///
-pub trait DrmDevice: DrmKmsOps + DrmGemOps + Debug + Send + Sync {
+pub trait DrmDevice: DrmKmsOps + DrmGemOps + DrmAtomicOps + Debug + Send + Sync {
     fn name(&self) -> &str;
     fn desc(&self) -> &str;
     fn features(&self) -> &DrmFeatures;

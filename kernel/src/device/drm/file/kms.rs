@@ -119,9 +119,7 @@ impl DrmFile {
                 .ok_or(Errno::ENOENT)?;
 
             let current = crtc.vblank_sequence();
-            current
-                .checked_add(args.sequence)
-                .ok_or(Errno::EOVERFLOW)?
+            current.checked_add(args.sequence).ok_or(Errno::EOVERFLOW)?
         } else {
             args.sequence
         };

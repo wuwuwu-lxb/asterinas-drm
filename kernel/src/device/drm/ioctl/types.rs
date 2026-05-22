@@ -315,6 +315,19 @@ pub struct DrmModeObjectGetProps {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeAtomic {
+    pub flags: u32,
+    pub count_objs: u32,
+    pub objs_ptr: u64,
+    pub count_props_ptr: u64,
+    pub props_ptr: u64,
+    pub prop_values_ptr: u64,
+    pub reserved: u64,
+    pub user_data: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmModeCreateBlob {
     pub data: u64,
     pub length: u32,

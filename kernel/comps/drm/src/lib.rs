@@ -14,6 +14,7 @@ macro_rules! __log_prefix {
     };
 }
 
+mod atomic;
 mod device;
 mod event;
 mod gem;
@@ -23,6 +24,7 @@ mod simpledrm;
 use alloc::{sync::Arc, vec::Vec};
 
 use aster_framebuffer::FRAMEBUFFER;
+pub use atomic::{DrmAtomicFlags, DrmAtomicObjectRequest};
 use component::{ComponentInitError, init_component};
 pub use device::{DrmDevice, DrmDeviceCaps, DrmFeatures};
 pub use event::DrmIoctlEventCtx;

@@ -2,7 +2,6 @@
 
 use crate::kms::object::property::{DrmProperty, DrmPropertyFlags, DrmPropertySpec};
 
-#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrmCrtcProps {
     Active,

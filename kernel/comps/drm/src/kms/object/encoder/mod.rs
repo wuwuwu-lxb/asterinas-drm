@@ -11,6 +11,12 @@ pub struct DrmEncoderState {
     crtc_id: Option<KmsObjectId>,
 }
 
+impl DrmEncoderState {
+    pub fn set_crtc_id(&mut self, crtc_id: Option<KmsObjectId>) {
+        self.crtc_id = crtc_id;
+    }
+}
+
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum DrmEncoderType {
@@ -64,7 +70,7 @@ impl DrmEncoder {
     }
 
     pub fn set_crtc_id(&self, crtc_id: Option<KmsObjectId>) {
-        self.state().lock().crtc_id = crtc_id;
+        self.state().lock().set_crtc_id(crtc_id);
     }
 }
 
