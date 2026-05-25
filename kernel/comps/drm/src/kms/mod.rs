@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use core::fmt::Debug;
 
 use ostd::sync::RwLock;
 
 use crate::{
-    DrmError,
+    DrmError, DrmIoctlEventCtx,
     kms::object::{DrmKmsObjectStore, KmsObjectId, display::DrmDisplayMode},
 };
 
@@ -50,4 +50,14 @@ pub trait DrmKmsOps: Debug + Send + Sync {
         display_mode: Option<DrmDisplayMode>,
         connector_ids: Vec<KmsObjectId>,
     ) -> Result<(), DrmError>;
+
+    fn page_flip(
+        &self,
+        crtc_id: KmsObjectId,
+        fb_id: KmsObjectId,
+        user_data: u64,
+        event_ctx: Arc<dyn DrmIoctlEventCtx>,
+    ) -> Result<(), DrmError>;
+
+    fn dirty_fb(&self, fb_id: KmsObjectId) -> Result<(), DrmError>;
 }

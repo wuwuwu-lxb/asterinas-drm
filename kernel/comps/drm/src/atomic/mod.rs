@@ -6,8 +6,9 @@ use core::fmt::Debug;
 use hashbrown::HashMap;
 
 use crate::{
-    DrmConnector, DrmCrtc, DrmDisplayMode, DrmError, DrmIoctlEventCtx, DrmKmsObject,
-    DrmKmsObjectProp, DrmKmsObjectStore, DrmKmsOps, DrmPendingVblankEvent, DrmPlane, DrmProperty,
+    DrmConnector, DrmCrtc, DrmDisplayMode, DrmError, DrmFramebuffer, DrmIoctlEventCtx,
+    DrmKmsObject, DrmKmsObjectProp, DrmKmsObjectStore, DrmKmsObjectType, DrmKmsOps,
+    DrmPendingVblankEvent, DrmPlane, DrmProperty,
     kms::object::{
         KmsObjectId, connector::helper::DrmPendingConnState, crtc::helper::DrmPendingCrtcState,
         geometry::RectU32, plane::helper::DrmPendingPlaneState, property::KmsObjectPropValue,
@@ -144,6 +145,13 @@ impl DrmAtomicEffect {
     }
 }
 
+/// Provides atomic KMS state handling for a DRM device.
+///
+/// This trait serves two entry paths. The legacy helpers translate legacy KMS
+/// operations, such as dirtyfb and page flip, into atomic state transitions so
+/// that drivers can share one validation and commit path. The atomic ioctl path
+/// consumes userspace property updates directly and applies them through the
+/// same check, commit, event, and flush sequence.
 pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
     fn atomic_set_crtc(
         &self,
@@ -232,6 +240,70 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
         self.atomic_commit_tail(atomic_state, flags)
     }
 
+    fn atomic_page_flip(
+        &self,
+        crtc_id: KmsObjectId,
+        fb_id: KmsObjectId,
+        user_data: u64,
+        event_ctx: Arc<dyn DrmIoctlEventCtx>,
+    ) -> Result<(), DrmError> {
+        let objects = self.kms_objects().write();
+
+        let flags = DrmAtomicFlags::PAGE_FLIP_EVENT;
+        let mut atomic_state = DrmAtomicState::default();
+
+        let crtc = objects
+            .get_object::<DrmCrtc>(crtc_id)
+            .ok_or(DrmError::NotFound)?;
+        let plane_id = crtc.primary_plane_id();
+        let plane = objects
+            .get_object::<DrmPlane>(plane_id)
+            .ok_or(DrmError::NotFound)?;
+        if plane.snapshot().crtc_id() != Some(crtc_id) {
+            return Err(DrmError::Invalid);
+        }
+
+        atomic_state.plane_states.insert(
+            plane_id,
+            DrmPendingPlaneState::new(None, None, None, Some(Some(fb_id))),
+        );
+
+        self.atomic_check(&objects, &mut atomic_state, flags)?;
+        self.atomic_commit(&objects, &atomic_state)?;
+        self.atomic_queue_vblank_event(&objects, &atomic_state, user_data, event_ctx)?;
+        drop(objects);
+
+        self.atomic_commit_tail(atomic_state, flags)
+    }
+
+    fn atomic_dirty_fb(&self, fb_id: KmsObjectId) -> Result<(), DrmError> {
+        let objects = self.kms_objects().write();
+
+        let flags = DrmAtomicFlags::empty();
+        let mut atomic_state = DrmAtomicState::default();
+
+        objects
+            .get_object::<DrmFramebuffer>(fb_id)
+            .ok_or(DrmError::NotFound)?;
+
+        for plane_id in objects.collect_object_ids(DrmKmsObjectType::Plane, None) {
+            let plane = objects
+                .get_object::<DrmPlane>(plane_id)
+                .ok_or(DrmError::NotFound)?;
+            let snapshot = plane.snapshot();
+
+            if snapshot.fb_id() == Some(fb_id) {
+                if let Some(crtc_id) = snapshot.crtc_id() {
+                    atomic_state.effect.add_affected_crtc(crtc_id);
+                }
+            }
+        }
+
+        drop(objects);
+
+        self.atomic_commit_tail(atomic_state, flags)
+    }
+
     fn atomic_commit_request(
         &self,
         requests: Vec<DrmAtomicObjectRequest>,
@@ -248,10 +320,16 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
             if flags.contains(DrmAtomicFlags::NONBLOCK)
                 || flags.contains(DrmAtomicFlags::PAGE_FLIP_ASYNC)
             {
-                // TODO:
+                // TODO: Support nonblocking commits with a deferred commit worker
+                // and event lifetime management. Async page flips also need a
+                // backend path that can bypass normal vblank synchronization.
                 return Err(DrmError::NotSupported);
             }
 
+            // Hold the KMS object store across check and commit. The committed
+            // object state must be the same state that was validated, so commit
+            // is expected to be infallible with respect to concurrent KMS
+            // changes.
             let objects = self.kms_objects().write();
             let mut atomic_state = DrmAtomicState::new(&objects, requests)?;
             self.atomic_check(&objects, &mut atomic_state, flags)?;
@@ -266,6 +344,10 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
         Ok(())
     }
 
+    /// Validates a pending atomic state and records its display side effects.
+    ///
+    /// This step resolves each object's final state, checks object-specific
+    /// constraints, and computes which CRTCs need a modeset, event, or flush.
     fn atomic_check(
         &self,
         objects: &DrmKmsObjectStore,
@@ -332,6 +414,10 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
         Ok(())
     }
 
+    /// Commits the checked atomic state into the software KMS objects.
+    ///
+    /// This step updates plane, CRTC, and connector state after validation has
+    /// succeeded. It does not program the display backend directly.
     fn atomic_commit(
         &self,
         objects: &DrmKmsObjectStore,
@@ -361,6 +447,10 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
         Ok(())
     }
 
+    /// Queues flip-complete events for CRTCs affected by this commit.
+    ///
+    /// Events are armed after the software state is committed and are delivered
+    /// when the target CRTC reaches the next vblank sequence.
     fn atomic_queue_vblank_event(
         &self,
         objects: &DrmKmsObjectStore,
@@ -390,6 +480,11 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
         Ok(())
     }
 
+    /// Applies a committed atomic state to the display backend.
+    ///
+    /// The default implementation flushes every affected CRTC. Drivers may
+    /// override this step when hardware programming, cleanup, or asynchronous
+    /// ordering requires backend-specific handling.
     fn atomic_commit_tail(
         &self,
         atomic_state: DrmAtomicState,
@@ -405,8 +500,6 @@ pub trait DrmAtomicOps: DrmKmsOps + Debug + Send + Sync {
 
         Ok(())
     }
-
-    fn atomic_swap_state(&self) -> Result<(), DrmError>;
 
     fn atomic_flush(&self, crtc_id: KmsObjectId) -> Result<(), DrmError>;
 }

@@ -301,6 +301,52 @@ impl DrmFile {
         Ok(0)
     }
 
+    pub(super) fn ioctl_mode_page_flip(&self, cmd: DrmIoctlModePageFlip) -> Result<i32> {
+        bitflags::bitflags! {
+            struct PageFlipFlags: u32 {
+                /// Request a flip complete event
+                const EVENT = 0x01;
+                /// Request async page flip (don’t wait for vblank)
+                const ASYNC = 0x02;
+                /// Absolute sequence target (optional)
+                const TARGET_ABSOLUTE = 0x04;
+                /// Relative sequence target (optional)
+                const TARGET_RELATIVE = 0x08;
+
+                /// Combined target mask
+                const TARGET = Self::TARGET_ABSOLUTE.bits | Self::TARGET_RELATIVE.bits;
+            }
+        }
+
+        let args: DrmModeCrtcPageFlip = cmd.read()?;
+        let flags = PageFlipFlags::from_bits(args.flags).ok_or(Errno::EINVAL)?;
+
+        if flags.contains(PageFlipFlags::TARGET) || flags.contains(PageFlipFlags::ASYNC) {
+            // TODO: Support targeted and async flips by carrying the target
+            // sequence and async mode into the atomic page-flip path.
+            return_errno!(Errno::EOPNOTSUPP);
+        }
+
+        self.device().page_flip(
+            args.crtc_id,
+            args.fb_id,
+            args.user_data,
+            self.events.clone(),
+        )?;
+
+        Ok(0)
+    }
+
+    pub(super) fn ioctl_mode_dirty_fb(&self, cmd: DrmIoctlModeDirtyFb) -> Result<i32> {
+        let args: DrmModeFbDirtyCmd = cmd.read()?;
+
+        // TODO: Honor dirtyfb flags, color, and clip rectangles. For now,
+        // treat every dirtyfb request as a whole-framebuffer refresh.
+        self.device().dirty_fb(args.fb_id)?;
+
+        Ok(0)
+    }
+
     pub(super) fn ioctl_mode_get_encoder(&self, cmd: DrmIoctlModeGetEncoder) -> Result<i32> {
         let mut args: DrmModeGetEncoder = cmd.read()?;
         let (crtc_id, encoder_type, possible_crtcs) = {

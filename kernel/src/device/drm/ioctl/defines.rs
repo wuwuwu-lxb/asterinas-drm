@@ -111,6 +111,20 @@ drm_ioc!(
     DrmIoctlFlags::MODESET
 );
 drm_ioc!(
+    DrmIoctlModePageFlip,
+    DRM_IOCTL_MODE_PAGE_FLIP,
+    0xb0,
+    InOutData<DrmModeCrtcPageFlip>,
+    DrmIoctlFlags::MODESET.union(DrmIoctlFlags::MASTER)
+);
+drm_ioc!(
+    DrmIoctlModeDirtyFb,
+    DRM_IOCTL_MODE_DIRTYFB,
+    0xb1,
+    InOutData<DrmModeFbDirtyCmd>,
+    DrmIoctlFlags::MODESET.union(DrmIoctlFlags::MASTER)
+);
+drm_ioc!(
     DrmIoctlModeCreateDumb,
     DRM_IOCTL_MODE_CREATE_DUMB,
     0xb2,

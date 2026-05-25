@@ -528,6 +528,8 @@ impl FileIo for DrmFile {
                 cmd @ DrmIoctlModeGetPropBlob => self.ioctl_mode_get_blob(cmd),
                 cmd @ DrmIoctlModeAddFB => self.ioctl_mode_add_fb(cmd),
                 cmd @ DrmIoctlModeRmFB => self.ioctl_mode_rm_fb(cmd),
+                cmd @ DrmIoctlModePageFlip => self.ioctl_mode_page_flip(cmd),
+                cmd @ DrmIoctlModeDirtyFb => self.ioctl_mode_dirty_fb(cmd),
                 cmd @ DrmIoctlModeCreateDumb => self.ioctl_mode_create_dumb(cmd),
                 cmd @ DrmIoctlModeMapDumb => self.ioctl_mode_map_dumb(cmd),
                 cmd @ DrmIoctlModeDestroyDumb => self.ioctl_mode_destroy_dumb(cmd),

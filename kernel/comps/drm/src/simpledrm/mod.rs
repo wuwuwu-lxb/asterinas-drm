@@ -7,8 +7,8 @@ use ostd::{mm::VmWriter, sync::RwLock};
 
 use crate::{
     DrmConnStatus, DrmConnType, DrmConnector, DrmCrtc, DrmDisplayInfo, DrmDisplayMode,
-    DrmEncoderType, DrmError, DrmFramebuffer, DrmGemObject, DrmKmsObjectType, DrmPlane,
-    DrmPlaneType,
+    DrmEncoderType, DrmError, DrmFramebuffer, DrmGemObject, DrmIoctlEventCtx, DrmKmsObjectType,
+    DrmPlane, DrmPlaneType,
     atomic::DrmAtomicOps,
     device::{DrmDevice, DrmDeviceCaps, DrmFeatures},
     gem::{DrmGemOps, DrmIoctlGemCtx, vma_manager::DrmVmaOffsetManager},
@@ -177,6 +177,20 @@ impl DrmKmsOps for SimpleDrmDevice {
     ) -> Result<(), DrmError> {
         self.atomic_set_crtc(crtc_id, fb_id, x, y, display_mode, connector_ids)
     }
+
+    fn page_flip(
+        &self,
+        crtc_id: KmsObjectId,
+        fb_id: KmsObjectId,
+        user_data: u64,
+        event_ctx: Arc<dyn DrmIoctlEventCtx>,
+    ) -> Result<(), DrmError> {
+        self.atomic_page_flip(crtc_id, fb_id, user_data, event_ctx)
+    }
+
+    fn dirty_fb(&self, fb_id: KmsObjectId) -> Result<(), DrmError> {
+        self.atomic_dirty_fb(fb_id)
+    }
 }
 
 impl DrmGemOps for SimpleDrmDevice {
@@ -194,10 +208,6 @@ impl DrmGemOps for SimpleDrmDevice {
 }
 
 impl DrmAtomicOps for SimpleDrmDevice {
-    fn atomic_swap_state(&self) -> Result<(), DrmError> {
-        Ok(())
-    }
-
     fn atomic_flush(&self, crtc_id: KmsObjectId) -> Result<(), DrmError> {
         let object = self.kms_objects().read();
 

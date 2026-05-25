@@ -207,6 +207,26 @@ pub struct DrmModeFbCmd {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeCrtcPageFlip {
+    pub crtc_id: u32,
+    pub fb_id: u32,
+    pub flags: u32,
+    pub reserved: u32,
+    pub user_data: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
+pub struct DrmModeFbDirtyCmd {
+    pub fb_id: u32,
+    pub flags: u32,
+    pub color: u32,
+    pub num_clips: u32,
+    pub clips_ptr: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod)]
 pub struct DrmModeCreateDumb {
     pub height: u32,
     pub width: u32,
