@@ -12,6 +12,36 @@ if command -v dbus-launch >/dev/null 2>&1; then
   eval "$(dbus-launch --sh-syntax)"
 fi
 
+# On a standard NixOS system, /run/opengl-driver is created and populated
+# automatically by systemd-tmpfiles during early boot. The tmpfiles rules
+# are responsible for setting up volatile runtime paths under /run and
+# linking them to the active OpenGL driver closure (graphics-drivers).
+#
+# In Asterinas, systemd-tmpfiles-setup.service is intentionally masked and
+# not executed at boot time. As a result, the /run/opengl-driver hierarchy
+# is never created automatically, even though Mesa and the graphics-drivers
+# derivation are correctly built and present in the Nix store.
+#
+# To allow Mesa, GBM, and GLX-based applications (e.g. glxinfo, Xorg) to
+# locate their runtime driver files, we manually create a symbolic link
+# from /run/opengl-driver to the active graphics-drivers store path here.
+#
+# This is a temporary workaround for debugging and bring-up. Once
+# systemd-tmpfiles support is enabled (or an equivalent init-time mechanism
+# is provided), this manual setup should be removed.
+DRIVERS_PATH=$(ls -d /nix/store/*-graphics-drivers | head -n1)
+
+if [ -z "$DRIVERS_PATH" ]; then
+    echo "graphics-drivers not found"
+    exit 1
+fi
+
+ln -sf "$DRIVERS_PATH" /run/opengl-driver
+
+mkdir -p /run/user/0
+chmod 700 /run/user/0
+export XDG_RUNTIME_DIR=/run/user/0
+
 # Step 2: run Xorg
 XKB_DATA="/run/current-system/sw/share/X11/xkb"
 MODULE_PATH="/run/current-system/sw/lib/xorg/modules"
