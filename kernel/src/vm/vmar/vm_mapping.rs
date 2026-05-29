@@ -375,6 +375,24 @@ impl VmMapping {
 
             return res;
         } else if let MappedMemory::Device(ref mapped_obj) = self.mapped_mem {
+            if is_write {
+                // Device mappings may already have a RAM page installed before a
+                // fork or remap. Handle that permission fault like other
+                // mappings first; calling the device fault handler again would
+                // try to map over the existing PTE.
+                if self
+                    .handle_single_page_fault(
+                        vm_space,
+                        page_aligned_addr,
+                        page_fault_info.required_perms,
+                        rss_delta,
+                    )
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+
             let handle = MappingHandle {
                 vm_mapping: self,
                 vm_space,

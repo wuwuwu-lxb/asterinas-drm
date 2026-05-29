@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(super) struct DrmGemShmemObject {
+pub(in crate::device) struct DrmGemShmemObject {
     vmo: Arc<Vmo>,
     size: usize,
     pitch: u32,
@@ -17,7 +17,7 @@ pub(super) struct DrmGemShmemObject {
 }
 
 impl DrmGemShmemObject {
-    pub fn new(size: usize, pitch: u32) -> core::result::Result<Self, DrmError> {
+    pub(in crate::device) fn new(size: usize, pitch: u32) -> core::result::Result<Self, DrmError> {
         let vmo = VmoOptions::new(size)
             .flags(VmoFlags::RESIZABLE)
             .alloc()

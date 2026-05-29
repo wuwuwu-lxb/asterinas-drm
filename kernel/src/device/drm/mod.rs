@@ -12,7 +12,7 @@ use crate::{
 };
 
 mod file;
-mod gem;
+pub(super) mod gem;
 mod ioctl;
 mod minor;
 

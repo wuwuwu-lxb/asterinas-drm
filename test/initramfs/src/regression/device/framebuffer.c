@@ -186,6 +186,14 @@ FN_TEST(mmap_mremap_and_fork)
 }
 END_TEST()
 
+FN_TEST(mmap_unaligned_offset)
+{
+	void *mapped = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+			    fb_fd, 1);
+	TEST_ERRNO(mapped, EINVAL);
+}
+END_TEST()
+
 FN_SETUP(close_framebuffer)
 {
 	CHECK(close(fb_fd));
