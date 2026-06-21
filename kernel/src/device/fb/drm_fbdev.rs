@@ -4,18 +4,24 @@ use alloc::sync::Arc;
 use core::time::Duration;
 
 use aster_drm::{
-    DRM_FORMAT_MAX_PLANES, DrmConnStatus, DrmConnector, DrmDevice, DrmDisplayFormat,
-    DrmDisplayMode, DrmFeatures, DrmFramebuffer, DrmGemObject, DrmIoctlGemCtx, DrmKmsObject,
-    DrmKmsObjectType,
+    DrmConnStatus, DrmConnector, DrmDevice, DrmDisplayFormat, DrmDisplayMode, DrmFeatures,
+    DrmFramebuffer, DrmGemObject, DrmIoctlGemCtx, DrmKmsObject, DrmKmsObjectType,
+    DRM_FORMAT_MAX_PLANES,
 };
 use aster_framebuffer::{ColorMapEntry, MAX_CMAP_SIZE};
 use ostd::sync::WaitQueue;
 
 use crate::{
-    device::drm::gem::DrmGemShmemObject, prelude::*, thread::kernel_thread::ThreadOptions,
+    device::{
+        drm::gem::DrmGemShmemObject,
+        tty::{enter_graphics_mode, leave_graphics_mode, ConsoleGraphicsOwner},
+    },
+    prelude::*,
+    thread::kernel_thread::ThreadOptions,
 };
 
 const FBDEV_REFRESH_INTERVAL_MS: u64 = 33;
+const FBDEV_CONSOLE_OWNER_ID: u64 = 0;
 
 #[derive(Debug)]
 pub(super) struct DrmFbdevBackend {
@@ -49,8 +55,7 @@ impl DrmIoctlGemCtx for FbGemCtx {
 
 impl DrmFbdevBackend {
     pub(super) fn new() -> Result<Self> {
-        let (device, crtc_id, connector_id, mode, width_mm, height_mm) =
-            Self::choose_kms_target()?;
+        let (device, crtc_id, connector_id, mode, width_mm, height_mm) = Self::choose_kms_target()?;
         let width = u32::from(mode.hdisplay());
         let height = u32::from(mode.vdisplay());
 
@@ -76,11 +81,15 @@ impl DrmFbdevBackend {
             .kms_objects()
             .write()
             .add_object(DrmKmsObject::Framebuffer(framebuffer))?;
-        if let Err(error) =
-            device.set_crtc(crtc_id, fb_id, 0, 0, Some(mode), vec![connector_id])
-        {
+        if let Err(error) = device.set_crtc(crtc_id, fb_id, 0, 0, Some(mode), vec![connector_id]) {
             device.kms_objects().write().remove_framebuffer(fb_id);
             return Err(error.into());
+        }
+
+        if let Err(error) = enter_graphics_mode(ConsoleGraphicsOwner::Fbdev(FBDEV_CONSOLE_OWNER_ID))
+        {
+            device.kms_objects().write().remove_framebuffer(fb_id);
+            return Err(error);
         }
 
         device.dirty_fb(fb_id)?;
@@ -197,5 +206,14 @@ impl DrmFbdevBackend {
         };
 
         ThreadOptions::new(task_fn).spawn();
+    }
+}
+
+impl Drop for DrmFbdevBackend {
+    fn drop(&mut self) {
+        if let Err(error) = leave_graphics_mode(ConsoleGraphicsOwner::Fbdev(FBDEV_CONSOLE_OWNER_ID))
+        {
+            ostd::warn!("failed to release DRM fbdev console owner: {:?}", error);
+        }
     }
 }

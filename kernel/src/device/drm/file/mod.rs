@@ -12,8 +12,9 @@ use ostd::mm::VmIo;
 
 use crate::{
     device::drm::{
-        DrmMinorType, file::kms::DrmFileEvent, has_current_sys_admin, ioctl::*, minor::DrmMinor,
+        file::kms::DrmFileEvent, has_current_sys_admin, ioctl::*, minor::DrmMinor, DrmMinorType,
     },
+    device::tty::{enter_graphics_mode, leave_graphics_mode, ConsoleGraphicsOwner},
     events::IoEvents,
     fs::{
         file::{FileIo, Mappable, StatusFlags},
@@ -21,8 +22,8 @@ use crate::{
     },
     prelude::*,
     process::{
-        Process,
         signal::{PollHandle, Pollable, Poller},
+        Process,
     },
     util::ioctl::RawIoctl,
 };
@@ -98,6 +99,7 @@ pub(super) struct DrmFile {
     auth_state: Mutex<DrmFileAuthState>,
     blob_ids: Mutex<Vec<u32>>,
     framebuffer_ids: Mutex<Vec<u32>>,
+    console_graphics_owner: AtomicBool,
 
     next_gem_handle: AtomicU32,
     gem_table: Mutex<HashMap<u32, Arc<dyn DrmGemObject>>>,
@@ -123,6 +125,7 @@ impl DrmFile {
             auth_state: Mutex::new(auth_state),
             blob_ids: Mutex::new(Vec::new()),
             framebuffer_ids: Mutex::new(Vec::new()),
+            console_graphics_owner: AtomicBool::new(false),
             next_gem_handle: AtomicU32::new(1),
             gem_table: Mutex::new(HashMap::new()),
             events: Arc::new(DrmFileEvent::new()),
@@ -177,10 +180,36 @@ impl DrmFile {
     fn device(&self) -> &Arc<dyn DrmDevice> {
         self.minor.device()
     }
+
+    fn console_graphics_owner(&self) -> ConsoleGraphicsOwner {
+        ConsoleGraphicsOwner::DrmFile(self.minor.graphics_owner_id(self.file_id))
+    }
+
+    pub(super) fn enter_console_graphics_mode(&self) {
+        if self.console_graphics_owner.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
+        if let Err(error) = enter_graphics_mode(self.console_graphics_owner()) {
+            self.console_graphics_owner.store(false, Ordering::Relaxed);
+            ostd::warn!("failed to switch VT console to graphics mode: {:?}", error);
+        }
+    }
+
+    fn leave_console_graphics_mode(&self) {
+        if !self.console_graphics_owner.swap(false, Ordering::Relaxed) {
+            return;
+        }
+
+        if let Err(error) = leave_graphics_mode(self.console_graphics_owner()) {
+            ostd::warn!("failed to restore VT console mode: {:?}", error);
+        }
+    }
 }
 
 impl Drop for DrmFile {
     fn drop(&mut self) {
+        self.leave_console_graphics_mode();
         self.minor.drop_master(self.file_id);
 
         for gem_object in self
@@ -516,6 +545,7 @@ impl FileIo for DrmFile {
                     }
 
                     self.minor.drop_master(self.file_id);
+                    self.leave_console_graphics_mode();
                     Ok(0)
                 }
                 cmd @ DrmIoctlWaitVblank => self.ioctl_wait_vblank(cmd),

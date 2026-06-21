@@ -7,7 +7,7 @@ use aster_drm::DrmDevice;
 use device_id::{DeviceId, MajorId, MinorId};
 
 use crate::{
-    device::{Device, DeviceType, DevtmpfsInodeMeta, drm::file::DrmFile},
+    device::{drm::file::DrmFile, Device, DeviceType, DevtmpfsInodeMeta},
     fs::file::FileIo,
     prelude::*,
 };
@@ -98,6 +98,10 @@ impl DrmMinor {
 
     pub(super) fn device(&self) -> &Arc<dyn DrmDevice> {
         &self.device
+    }
+
+    pub(super) fn graphics_owner_id(&self, file_id: u32) -> u64 {
+        (u64::from(self.index) << 32) | u64::from(file_id)
     }
 }
 

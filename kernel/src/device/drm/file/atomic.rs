@@ -6,7 +6,7 @@ use aster_drm::{DrmAtomicFlags, DrmAtomicObjectRequest};
 
 use crate::{
     device::drm::{
-        file::{DrmFile, copy_array_from_user, user_array_ptr_at},
+        file::{copy_array_from_user, user_array_ptr_at, DrmFile},
         ioctl::*,
     },
     prelude::*,
@@ -57,6 +57,9 @@ impl DrmFile {
                 args.user_data,
                 self.events.clone(),
             )?;
+            if !flags.contains(DrmAtomicFlags::TEST_ONLY) {
+                self.enter_console_graphics_mode();
+            }
 
             Ok(())
         })?;

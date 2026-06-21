@@ -10,10 +10,11 @@ use crate::{
     fs::file::{FileIo, StatusFlags},
     prelude::*,
     process::{
-        JobControl, Terminal, broadcast_signal_async,
+        broadcast_signal_async,
         signal::{PollHandle, Pollable, Pollee},
+        JobControl, Terminal,
     },
-    util::ioctl::{RawIoctl, dispatch_ioctl},
+    util::ioctl::{dispatch_ioctl, RawIoctl},
 };
 
 mod device;
@@ -29,6 +30,7 @@ mod vt;
 
 pub(super) use driver::TtyDriver;
 pub(super) use flags::TtyFlags;
+pub(crate) use vt::{enter_graphics_mode, leave_graphics_mode, ConsoleGraphicsOwner};
 
 pub(super) fn init_in_first_process() -> Result<()> {
     hvc::init_in_first_process()?;

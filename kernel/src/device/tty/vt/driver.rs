@@ -3,9 +3,9 @@
 use alloc::{boxed::Box, format, sync::Arc};
 
 use aster_console::{
-    AnyConsoleDevice,
     font::BitmapFont,
     mode::{ConsoleMode, KeyboardMode},
+    AnyConsoleDevice,
 };
 use aster_framebuffer::DummyFramebufferConsole;
 use ostd::mm::{Infallible, VmIo, VmReader, VmWriter};
@@ -14,13 +14,13 @@ use spin::Once;
 use crate::{
     context::current_userspace,
     device::{
-        DevtmpfsInodeMeta,
         registry::char,
-        tty::{CFontOp, Tty, TtyDriver, file::TtyFile, termio::CTermios},
+        tty::{file::TtyFile, termio::CTermios, CFontOp, Tty, TtyDriver},
+        DevtmpfsInodeMeta,
     },
     fs::file::FileIo,
     prelude::*,
-    util::ioctl::{RawIoctl, dispatch_ioctl},
+    util::ioctl::{dispatch_ioctl, RawIoctl},
 };
 
 /// The driver for VT (virtual terminal) devices.
@@ -140,8 +140,13 @@ impl TtyDriver for VtDriver {
             }
             cmd @ SetGraphicsMode => {
                 let mode = ConsoleMode::try_from(cmd.get())?;
-                if !self.console.set_mode(mode) {
-                    return_errno_with_message!(Errno::EINVAL, "the console mode is not supported");
+                match mode {
+                    ConsoleMode::Graphics => {
+                        super::enter_graphics_mode(super::ConsoleGraphicsOwner::UserVt)?;
+                    }
+                    ConsoleMode::Text => {
+                        super::leave_graphics_mode(super::ConsoleGraphicsOwner::UserVt)?;
+                    }
                 }
             }
             cmd @ GetGraphicsMode => {
@@ -174,6 +179,18 @@ static TTY1: Once<Arc<Tty<VtDriver>>> = Once::new();
 /// This function will panic if the `tty1` device has not been initialized.
 pub fn tty1_device() -> &'static Arc<Tty<VtDriver>> {
     TTY1.get().unwrap()
+}
+
+pub(super) fn set_active_console_mode(mode: ConsoleMode) -> Result<()> {
+    let Some(tty1) = TTY1.get() else {
+        return_errno_with_message!(Errno::ENODEV, "the active VT has not been initialized");
+    };
+
+    if !tty1.driver().console.set_mode(mode) {
+        return_errno_with_message!(Errno::EINVAL, "the console mode is not supported");
+    }
+
+    Ok(())
 }
 
 pub(super) fn init_in_first_process() -> Result<()> {

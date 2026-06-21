@@ -254,6 +254,7 @@ impl DrmFile {
     pub(super) fn ioctl_mode_set_crtc(&self, cmd: DrmIoctlModeSetCrtc) -> Result<i32> {
         let args: DrmModeCrtc = cmd.read()?;
         let display_mode = (args.mode_valid != 0).then(|| args.mode.into());
+        let enables_crtc = display_mode.is_some();
 
         if display_mode.is_none() && args.count_connectors != 0 {
             return_errno!(Errno::EINVAL);
@@ -298,6 +299,10 @@ impl DrmFile {
             Ok(())
         })?;
 
+        if enables_crtc {
+            self.enter_console_graphics_mode();
+        }
+
         Ok(0)
     }
 
@@ -333,6 +338,7 @@ impl DrmFile {
             args.user_data,
             self.events.clone(),
         )?;
+        self.enter_console_graphics_mode();
 
         Ok(0)
     }
@@ -343,6 +349,7 @@ impl DrmFile {
         // TODO: Honor dirtyfb flags, color, and clip rectangles. For now,
         // treat every dirtyfb request as a whole-framebuffer refresh.
         self.device().dirty_fb(args.fb_id)?;
+        self.enter_console_graphics_mode();
 
         Ok(0)
     }
